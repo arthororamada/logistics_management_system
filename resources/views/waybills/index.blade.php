@@ -33,14 +33,14 @@
     <x-card title="Waybill Results" subtitle="Results appear only after applying a search filter.">
         <x-slot:actions><button id="export-waybill-results" type="button" class="button button-outline" @disabled($packages->isEmpty())><x-icon name="reports" :size="16" /> Export CSV</button></x-slot:actions>
         <div class="waybill-results-toolbar"><strong>Total: {{ number_format($packages->total()) }}</strong><span>{{ $hasFilters ? 'Filtered waybill results' : 'Ready for search' }}</span></div>
-        <div class="table-wrap"><table id="waybill-results-table" class="access-table waybill-table"><thead><tr><th>Client</th><th>Created Date</th><th>Handover Date</th><th>Waybill Number</th><th>Consignee</th><th>City</th><th>Status</th><th>Reference</th><th>Priority</th></tr></thead><tbody>
+        <div class="table-wrap"><table id="waybill-results-table" class="access-table waybill-table"><thead><tr><th>Client</th><th>Created Date</th><th>Handover Date</th><th>Waybill Number</th><th>Consignee</th><th>City</th><th>Status</th><th>Reference</th><th>Priority</th><th class="align-right" data-export-ignore>Options</th></tr></thead><tbody>
             @forelse($packages as $package)
-                <tr><td>{{ $package->client?->client_name ?: '-' }}</td><td><span class="date-label">{{ $package->created_at?->format('M d, Y H:i') ?: '-' }}</span></td><td><span class="date-label">{{ $package->handover_date?->format('M d, Y H:i') ?: '-' }}</span></td><td><strong>{{ $package->waybill_number }}</strong><small>{{ $package->package_id }}</small></td><td><strong>{{ $package->buyer_name }}</strong><small>{{ $package->buyer_mobile }}</small></td><td>{{ $package->buyer_city ?: '-' }}</td><td><x-status-badge :status="$package->package_status" /></td><td>{{ $package->package_reference_1 ?: '-' }}</td><td>@if($package->is_priority)<span class="status-badge status-active">Priority</span>@else<span class="date-label">Standard</span>@endif</td></tr>
+                <tr><td>{{ $package->client?->client_name ?: '-' }}</td><td><span class="date-label">{{ $package->created_at?->format('M d, Y H:i') ?: '-' }}</span></td><td><span class="date-label">{{ $package->handover_date?->format('M d, Y H:i') ?: '-' }}</span></td><td><strong>{{ $package->waybill_number }}</strong><small>{{ $package->package_id }}</small></td><td><strong>{{ $package->buyer_name }}</strong><small>{{ $package->buyer_mobile }}</small></td><td>{{ $package->buyer_city ?: '-' }}</td><td><x-status-badge :status="$package->package_status" /></td><td>{{ $package->package_reference_1 ?: '-' }}</td><td>@if($package->is_priority)<span class="status-badge status-active">Priority</span>@else<span class="date-label">Standard</span>@endif</td><td class="align-right" data-export-ignore><a class="table-action" href="{{ route('waybills.show', ['package' => $package] + request()->query()) }}">View</a></td></tr>
             @empty
-                <tr><td colspan="9" class="empty-table">{{ $hasFilters ? 'No waybills match the selected filters.' : 'No rows loaded. Use Advanced Search above.' }}</td></tr>
+                <tr><td colspan="10" class="empty-table">{{ $hasFilters ? 'No waybills match the selected filters.' : 'No rows loaded. Use Advanced Search above.' }}</td></tr>
             @endforelse
         </tbody></table></div>
-        @if($packages->hasPages())<div class="pagination-links">{{ $packages->links() }}</div>@endif
+        @if($hasFilters)<div class="pagination-links">{{ $packages->links('vendor.pagination.waybill') }}</div>@endif
     </x-card>
 </div>
 
@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelector('#export-waybill-results')?.addEventListener('click', () => {
         const rows = [...document.querySelectorAll('#waybill-results-table tr')].map((row) =>
-            [...row.querySelectorAll('th, td')].map((cell) => `"${cell.innerText.trim().replaceAll('"', '""')}"`).join(',')
+            [...row.querySelectorAll('th:not([data-export-ignore]), td:not([data-export-ignore])')].map((cell) => `"${cell.innerText.trim().replaceAll('"', '""')}"`).join(',')
         );
         const blob = new Blob([`\uFEFF${rows.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
         const url = URL.createObjectURL(blob);

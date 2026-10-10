@@ -67,7 +67,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/waybills', [WaybillController::class, 'store'])->middleware('permission:waybills.create')->name('waybills.store');
     Route::get('/waybills/upload', [WaybillController::class, 'upload'])->middleware('permission:waybills.upload')->name('waybills.upload');
     Route::get('/waybills/upload/template', [WaybillController::class, 'template'])->middleware('permission:waybills.upload')->name('waybills.template');
+    Route::post('/waybills/upload/custom-template', [WaybillController::class, 'customTemplate'])->middleware('permission:waybills.upload')->name('waybills.custom-template');
     Route::post('/waybills/upload', [WaybillController::class, 'import'])->middleware('permission:waybills.upload')->name('waybills.import');
+    Route::post('/waybills/upload/proceed', [WaybillController::class, 'proceedImport'])->middleware('permission:waybills.upload')->name('waybills.import.proceed');
+    Route::get('/waybills/{package}', [WaybillController::class, 'show'])->middleware('permission:waybills.view')->name('waybills.show');
 
     Route::get('/users', [UserController::class, 'index'])->middleware('permission:users.view')->name('users.index');
     Route::get('/users/create', [UserController::class, 'create'])->middleware('permission:users.create')->name('users.create');
