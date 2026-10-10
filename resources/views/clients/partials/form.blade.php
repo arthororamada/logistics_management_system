@@ -11,5 +11,12 @@
         <div class="form-stack"><div class="form-group"><label for="address">Address <span class="required">*</span></label><textarea id="address" name="address" rows="5" maxlength="1000" required class="textarea-control @error('address') has-error @enderror" placeholder="Complete client address">{{ old('address', $client->address) }}</textarea>@error('address')<p class="form-error">{{ $message }}</p>@enderror</div>
         <label class="account-status-control"><input type="hidden" name="is_active" value="0"><input type="checkbox" name="is_active" value="1" @checked((bool) old('is_active', $client->exists ? $client->is_active : true))><span class="status-switch"></span><span><strong>Active client</strong><small>Inactive clients remain on record but are unavailable for new trips.</small></span></label></div>
     </x-card>
+    <x-card title="API Configuration" subtitle="Optional credentials and endpoint used for client integrations.">
+        <div class="form-stack">
+            <div class="form-group"><label for="api_key">API key</label><div class="input-control @error('api_key') has-error @enderror"><input id="api_key" name="api_key" value="{{ old('api_key', $client->api_key) }}" maxlength="1000" autocomplete="off" placeholder="Client API key"></div>@error('api_key')<p class="form-error">{{ $message }}</p>@enderror</div>
+            <div class="form-group"><label for="token">Token</label><div class="input-control @error('token') has-error @enderror"><input id="token" name="token" value="{{ old('token', $client->token) }}" maxlength="2000" autocomplete="off" placeholder="Client access token"></div>@error('token')<p class="form-error">{{ $message }}</p>@enderror</div>
+            <div class="form-group"><label for="endpoint">Endpoint</label><div class="input-control @error('endpoint') has-error @enderror"><input id="endpoint" name="endpoint" type="url" value="{{ old('endpoint', $client->endpoint) }}" maxlength="2048" placeholder="https://api.example.com"></div><p class="field-hint">Enter a complete URL, including http:// or https://.</p>@error('endpoint')<p class="form-error">{{ $message }}</p>@enderror</div>
+        </div>
+    </x-card>
 </div>
 <div class="form-actions"><a href="{{ route('clients.index') }}" class="button button-outline">Cancel</a><x-button type="submit" variant="primary">{{ $submitLabel }}</x-button></div>

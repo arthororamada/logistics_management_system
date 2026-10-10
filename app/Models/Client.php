@@ -15,6 +15,9 @@ class Client extends Model
         'address',
         'focal_person',
         'contact_number',
+        'api_key',
+        'token',
+        'endpoint',
         'is_active',
     ];
 

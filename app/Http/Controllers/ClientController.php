@@ -37,7 +37,7 @@ class ClientController extends Controller
 
     public function create(): View
     {
-        return view('clients.create', ['client' => new Client()]);
+        return view('clients.create', ['client' => new Client]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -74,6 +74,9 @@ class ClientController extends Controller
             'address' => trim((string) $request->input('address')),
             'focal_person' => trim((string) $request->input('focal_person')),
             'contact_number' => trim((string) $request->input('contact_number')),
+            'api_key' => $this->trimToNull($request->input('api_key')),
+            'token' => $this->trimToNull($request->input('token')),
+            'endpoint' => $this->trimToNull($request->input('endpoint')),
         ]);
 
         return $request->validate([
@@ -82,7 +85,17 @@ class ClientController extends Controller
             'address' => ['required', 'string', 'max:1000'],
             'focal_person' => ['required', 'string', 'max:150'],
             'contact_number' => ['required', 'string', 'max:50'],
+            'api_key' => ['nullable', 'string', 'max:1000'],
+            'token' => ['nullable', 'string', 'max:2000'],
+            'endpoint' => ['nullable', 'url', 'max:2048'],
             'is_active' => ['required', 'boolean'],
         ]);
+    }
+
+    private function trimToNull(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 }
