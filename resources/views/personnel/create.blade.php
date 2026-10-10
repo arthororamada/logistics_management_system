@@ -1,0 +1,1 @@
+@extends('layouts.app') @section('title','Add Personnel') @section('content')<section class="page-heading"><div><p class="eyebrow">Fleet Operations</p><h2>Add Personnel</h2></div></section><form method="POST" action="{{ route('personnel.store') }}">@csrf @include('personnel.partials.form',['submitLabel'=>'Create Personnel'])</form>@endsection
