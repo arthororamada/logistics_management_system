@@ -4,7 +4,7 @@
             ['label' => 'Personnel', 'icon' => 'users', 'route' => 'personnel.index', 'permission' => 'personnel.view'],
             ['label' => 'Vehicles', 'icon' => 'vehicles', 'route' => 'vehicles.index', 'permission' => 'vehicles.view'],
             ['label' => 'Drivers', 'icon' => 'drivers'],
-            ['label' => 'Trips', 'icon' => 'trips'],
+            ['label' => 'Trips', 'icon' => 'trips', 'route' => 'trips.index', 'permission' => 'trips.view'],
             ['label' => 'Maintenance', 'icon' => 'maintenance'],
         ],
         'Trip Maintenance' => [

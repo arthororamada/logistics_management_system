@@ -28,12 +28,16 @@ class TripTypeManagementTest extends TestCase
 
     public function test_administrator_can_update_and_delete_a_trip_type(): void
     {
-        $tripType = TripType::create(['trip_type' => 'Pickup', 'is_active' => true]);
-        $this->actingAs($this->administrator())->put(route('trip-types.update', $tripType), ['trip_type' => 'Return Pickup', 'is_active' => '0'])->assertRedirect(route('trip-types.index'));
-        $this->assertDatabaseHas('trip_types', ['id' => $tripType->id, 'trip_type' => 'Return Pickup', 'is_active' => false]);
+        $name = 'Pickup '.str()->random(12);
+        $tripType = TripType::create(['trip_type' => $name, 'is_active' => true]);
+        $this->actingAs($this->administrator())->put(route('trip-types.update', $tripType), ['trip_type' => 'Return '.$name, 'is_active' => '0'])->assertRedirect(route('trip-types.index'));
+        $this->assertDatabaseHas('trip_types', ['id' => $tripType->id, 'trip_type' => 'Return '.$name, 'is_active' => false]);
         $this->actingAs($this->administrator())->delete(route('trip-types.destroy', $tripType))->assertRedirect();
         $this->assertDatabaseMissing('trip_types', ['id' => $tripType->id]);
     }
 
-    private function administrator(): User { return User::where('username', 'admin')->firstOrFail(); }
+    private function administrator(): User
+    {
+        return User::where('username', 'admin')->firstOrFail();
+    }
 }

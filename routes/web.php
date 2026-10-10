@@ -1,26 +1,26 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
-use App\Http\Controllers\PermissionController;
-use App\Http\Controllers\RoleController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\WarehouseController;
-use App\Http\Controllers\VehicleGroupController;
-use App\Http\Controllers\VehicleTypeController;
-use App\Http\Controllers\VehicleMakeController;
 use App\Http\Controllers\ClientController;
-use App\Http\Controllers\RouteController;
-use App\Http\Controllers\TripTypeController;
-use App\Http\Controllers\OtherCostController;
 use App\Http\Controllers\FuelSupplierController;
+use App\Http\Controllers\OtherCostController;
+use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PersonnelController;
+use App\Http\Controllers\PersonnelTypeController;
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\RouteController;
 use App\Http\Controllers\ShippingLineController;
 use App\Http\Controllers\ShippingRateController;
 use App\Http\Controllers\TripPaymentController;
-use App\Http\Controllers\VehicleStatusController;
-use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\TripRateController;
-use App\Http\Controllers\PersonnelTypeController;
-use App\Http\Controllers\PersonnelController;
+use App\Http\Controllers\TripTypeController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\VehicleController;
+use App\Http\Controllers\VehicleGroupController;
+use App\Http\Controllers\VehicleMakeController;
+use App\Http\Controllers\VehicleStatusController;
+use App\Http\Controllers\VehicleTypeController;
+use App\Http\Controllers\WarehouseController;
 use App\Models\Vehicle;
 use App\Models\VehicleStatus;
 use Illuminate\Support\Facades\Auth;
@@ -61,6 +61,13 @@ Route::get('/template', function () {
 })->middleware(['auth', 'permission:template.view'])->name('template');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/trips', [\App\Http\Controllers\TripController::class, 'index'])->middleware('permission:trips.view')->name('trips.index');
+    Route::post('/trips', [\App\Http\Controllers\TripController::class, 'store'])->middleware(['permission:trips.create', 'permission:trips.view'])->name('trips.store');
+    Route::get('/trips/{trip}', [\App\Http\Controllers\TripController::class, 'show'])->middleware('permission:trips.view')->name('trips.show');
+    Route::put('/trips/{trip}', [\App\Http\Controllers\TripController::class, 'update'])->middleware('permission:trips.update')->name('trips.update');
+    Route::post('/trips/{trip}/dispatch', [\App\Http\Controllers\TripController::class, 'dispatch'])->middleware('permission:trips.dispatch')->name('trips.dispatch');
+    Route::post('/trips/{trip}/complete', [\App\Http\Controllers\TripController::class, 'complete'])->middleware('permission:trips.complete')->name('trips.complete');
+    Route::get('/trips/{trip}/print', [\App\Http\Controllers\TripController::class, 'print'])->middleware('permission:trips.view')->name('trips.print');
     Route::get('/users', [UserController::class, 'index'])->middleware('permission:users.view')->name('users.index');
     Route::get('/users/create', [UserController::class, 'create'])->middleware('permission:users.create')->name('users.create');
     Route::post('/users', [UserController::class, 'store'])->middleware('permission:users.create')->name('users.store');

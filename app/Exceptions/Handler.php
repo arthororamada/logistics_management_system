@@ -23,6 +23,15 @@ class Handler extends ExceptionHandler
      */
     public function register(): void
     {
+        $this->renderable(function (\Illuminate\Database\QueryException $e, \Illuminate\Http\Request $request) {
+            if (($e->errorInfo[1] ?? null) === 1451 && str_contains($e->getMessage(), 'trip')) {
+                $message = 'This record is used by a trip and cannot be deleted. Deactivate it instead where supported.';
+
+                return $request->expectsJson()
+                    ? response()->json(['message' => $message], 409)
+                    : back()->with('error', $message);
+            }
+        });
         $this->reportable(function (Throwable $e) {
             //
         });
