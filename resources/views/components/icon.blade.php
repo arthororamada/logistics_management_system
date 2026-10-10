@@ -19,6 +19,8 @@
         'logout' => '<path d="M10 17l5-5-5-5M15 12H3M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>',
         'user' => '<path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/>',
         'plus' => '<path d="M12 5v14M5 12h14"/>',
+        'list' => '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r=".5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r=".5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r=".5" fill="currentColor" stroke="none"/>',
+        'upload' => '<path d="M12 16V4m-5 5 5-5 5 5M5 20h14"/>',
         'arrow-right' => '<path d="M5 12h14m-6-6 6 6-6 6"/>',
         'trend' => '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
         'school' => '<path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6M3 10l9-7 9 7"/>',

@@ -22,7 +22,12 @@ class ClientController extends Controller
                 $query->where(fn ($builder) => $builder
                     ->where('client_code', 'like', "%{$search}%")
                     ->orWhere('client_name', 'like', "%{$search}%")
-                    ->orWhere('address', 'like', "%{$search}%")
+                    ->orWhere('full_address', 'like', "%{$search}%")
+                    ->orWhere('province', 'like', "%{$search}%")
+                    ->orWhere('city', 'like', "%{$search}%")
+                    ->orWhere('barangay', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('building_type', 'like', "%{$search}%")
                     ->orWhere('focal_person', 'like', "%{$search}%")
                     ->orWhere('contact_number', 'like', "%{$search}%"));
             })
@@ -71,7 +76,13 @@ class ClientController extends Controller
         $request->merge([
             'client_code' => strtoupper(trim((string) $request->input('client_code'))),
             'client_name' => trim((string) $request->input('client_name')),
-            'address' => trim((string) $request->input('address')),
+            'prefix' => $this->trimToNull($request->input('prefix')),
+            'full_address' => trim((string) $request->input('full_address')),
+            'province' => $this->trimToNull($request->input('province')),
+            'city' => $this->trimToNull($request->input('city')),
+            'barangay' => $this->trimToNull($request->input('barangay')),
+            'email' => $this->trimToNull($request->input('email')),
+            'building_type' => $this->trimToNull($request->input('building_type')),
             'focal_person' => trim((string) $request->input('focal_person')),
             'contact_number' => trim((string) $request->input('contact_number')),
             'api_key' => $this->trimToNull($request->input('api_key')),
@@ -82,7 +93,13 @@ class ClientController extends Controller
         return $request->validate([
             'client_code' => ['required', 'string', 'max:30', 'regex:/^[A-Z0-9_-]+$/', Rule::unique('clients', 'client_code')->ignore($client)],
             'client_name' => ['required', 'string', 'max:150'],
-            'address' => ['required', 'string', 'max:1000'],
+            'prefix' => ['nullable', 'string', 'max:30', Rule::unique('clients', 'prefix')->ignore($client)],
+            'full_address' => ['required', 'string', 'max:1000'],
+            'province' => ['nullable', 'string', 'max:100'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'barangay' => ['nullable', 'string', 'max:100'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'building_type' => ['nullable', 'string', 'max:100'],
             'focal_person' => ['required', 'string', 'max:150'],
             'contact_number' => ['required', 'string', 'max:50'],
             'api_key' => ['nullable', 'string', 'max:1000'],

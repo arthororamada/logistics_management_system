@@ -13,7 +13,12 @@ return new class extends Migration
             $table->id();
             $table->string('client_code', 30)->unique();
             $table->string('client_name', 150);
-            $table->text('address');
+            $table->text('full_address');
+            $table->string('province', 100)->nullable();
+            $table->string('city', 100)->nullable();
+            $table->string('barangay', 100)->nullable();
+            $table->string('email')->nullable();
+            $table->string('building_type', 100)->nullable();
             $table->string('focal_person', 150);
             $table->string('contact_number', 50);
             $table->boolean('is_active')->default(true);

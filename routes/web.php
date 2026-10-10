@@ -21,6 +21,7 @@ use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\TripRateController;
 use App\Http\Controllers\PersonnelTypeController;
 use App\Http\Controllers\PersonnelController;
+use App\Http\Controllers\WaybillController;
 use App\Models\Vehicle;
 use App\Models\VehicleStatus;
 use Illuminate\Support\Facades\Auth;
@@ -61,6 +62,13 @@ Route::get('/template', function () {
 })->middleware(['auth', 'permission:template.view'])->name('template');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/waybills', [WaybillController::class, 'index'])->middleware('permission:waybills.view')->name('waybills.index');
+    Route::get('/waybills/create', [WaybillController::class, 'create'])->middleware('permission:waybills.create')->name('waybills.create');
+    Route::post('/waybills', [WaybillController::class, 'store'])->middleware('permission:waybills.create')->name('waybills.store');
+    Route::get('/waybills/upload', [WaybillController::class, 'upload'])->middleware('permission:waybills.upload')->name('waybills.upload');
+    Route::get('/waybills/upload/template', [WaybillController::class, 'template'])->middleware('permission:waybills.upload')->name('waybills.template');
+    Route::post('/waybills/upload', [WaybillController::class, 'import'])->middleware('permission:waybills.upload')->name('waybills.import');
+
     Route::get('/users', [UserController::class, 'index'])->middleware('permission:users.view')->name('users.index');
     Route::get('/users/create', [UserController::class, 'create'])->middleware('permission:users.create')->name('users.create');
     Route::post('/users', [UserController::class, 'store'])->middleware('permission:users.create')->name('users.store');

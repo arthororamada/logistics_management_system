@@ -1,5 +1,10 @@
 @php
     $sections = [
+        'Waybill' => [
+            ['label' => 'List', 'icon' => 'list', 'route' => 'waybills.index', 'active' => 'waybills.index', 'permission' => 'waybills.view'],
+            ['label' => 'Create', 'icon' => 'plus', 'route' => 'waybills.create', 'active' => 'waybills.create', 'permission' => 'waybills.create'],
+            ['label' => 'Upload', 'icon' => 'upload', 'route' => 'waybills.upload', 'active' => 'waybills.upload', 'permission' => 'waybills.upload'],
+        ],
         'Fleet Operations' => [
             ['label' => 'Personnel', 'icon' => 'users', 'route' => 'personnel.index', 'permission' => 'personnel.view'],
             ['label' => 'Vehicles', 'icon' => 'vehicles', 'route' => 'vehicles.index', 'permission' => 'vehicles.view'],
@@ -63,7 +68,7 @@
                 <p class="nav-section-label">{{ $section }}</p>
                 @foreach($items as $item)
                     @if(!isset($item['permission']) || $user?->hasPermission($item['permission']))
-                    <a href="{{ isset($item['route']) ? route($item['route']) : '#' }}" class="nav-item {{ isset($item['route']) && request()->routeIs(Str::before($item['route'], '.').'.*') ? 'is-active' : '' }}" data-tooltip="{{ $item['label'] }}">
+                    <a href="{{ isset($item['route']) ? route($item['route']) : '#' }}" class="nav-item {{ isset($item['route']) && request()->routeIs($item['active'] ?? Str::before($item['route'], '.').'.*') ? 'is-active' : '' }}" data-tooltip="{{ $item['label'] }}">
                         <x-icon :name="$item['icon']" /><span class="nav-label">{{ $item['label'] }}</span>
                     </a>
                     @endif
