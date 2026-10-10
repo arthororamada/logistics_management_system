@@ -7,7 +7,11 @@
 
     <form class="waybill-page-controls" method="GET" action="{{ request()->url() }}">
         @foreach(request()->except(['page', 'per_page']) as $name => $value)
-            @if(is_scalar($value) && $value !== '')
+            @if(is_array($value))
+                @foreach($value as $item)
+                    <input type="hidden" name="{{ $name }}[]" value="{{ $item }}">
+                @endforeach
+            @elseif(is_scalar($value) && $value !== '')
                 <input type="hidden" name="{{ $name }}" value="{{ $value }}">
             @endif
         @endforeach

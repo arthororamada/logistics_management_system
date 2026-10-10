@@ -70,12 +70,16 @@ class WaybillController extends Controller
         ]);
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
-            'creator_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
-            'client_id' => ['nullable', 'integer', Rule::exists('clients', 'id')],
-            'package_status' => ['nullable', 'string', 'max:100'],
+            'creator_ids' => ['nullable', 'array'],
+            'creator_ids.*' => ['integer', Rule::exists('users', 'id')],
+            'client_ids' => ['nullable', 'array'],
+            'client_ids.*' => ['integer', Rule::exists('clients', 'id')],
+            'package_statuses' => ['nullable', 'array'],
+            'package_statuses.*' => ['string', 'max:100'],
             'package_location' => ['nullable', 'string', 'max:255'],
             'payment_type' => ['nullable', 'string', 'max:100'],
-            'priority' => ['nullable', Rule::in(['yes', 'no'])],
+            'priorities' => ['nullable', 'array'],
+            'priorities.*' => [Rule::in(['yes', 'no'])],
             'date_reference' => ['nullable', Rule::in(['created_at', 'updated_at', 'handover_date'])],
             'date_range' => ['nullable', 'string', 'max:30', 'regex:/^\d{4}-\d{2}-\d{2}(\s+to\s+\d{4}-\d{2}-\d{2})?$/'],
             'date_from' => ['nullable', 'date'],
@@ -89,7 +93,7 @@ class WaybillController extends Controller
         $filters = array_map(fn ($value) => is_string($value) ? trim($value) : $value, $filters);
         $request->query->remove('date_from');
         $request->query->remove('date_to');
-        $hasFilters = collect(['search', 'creator_id', 'client_id', 'package_status', 'package_location', 'payment_type', 'priority', 'date_range', 'tracking_numbers', 'package_ids', 'references', 'order_numbers'])
+        $hasFilters = collect(['search', 'creator_ids', 'client_ids', 'package_statuses', 'package_location', 'payment_type', 'priorities', 'date_range', 'tracking_numbers', 'package_ids', 'references', 'order_numbers'])
             ->contains(fn ($key) => ($filters[$key] ?? null) !== null && ($filters[$key] ?? '') !== '');
         $dateReference = $filters['date_reference'] ?? 'created_at';
         $perPage = (int) ($filters['per_page'] ?? 10);
@@ -107,13 +111,14 @@ class WaybillController extends Controller
                     ->orWhere('order_number', 'like', "%{$search}%")
                     ->orWhere('package_id', 'like', "%{$search}%")
                     ->orWhere('buyer_name', 'like', "%{$search}%")))
-                ->when($filters['creator_id'] ?? null, fn ($query, $creatorId) => $query->where('created_by', $creatorId))
-                ->when($filters['client_id'] ?? null, fn ($query, $clientId) => $query->where('client_id', $clientId))
-                ->when($filters['package_status'] ?? null, fn ($query, $status) => $query->where('package_status', $status))
+                ->when($filters['creator_ids'] ?? null, fn ($query, $creatorIds) => $query->whereIn('created_by', $creatorIds))
+                ->when($filters['client_ids'] ?? null, fn ($query, $clientIds) => $query->whereIn('client_id', $clientIds))
+                ->when($filters['package_statuses'] ?? null, fn ($query, $statuses) => $query->whereIn('package_status', $statuses))
                 ->when($filters['package_location'] ?? null, fn ($query, $location) => $query->where('package_location', 'like', "%{$location}%"))
                 ->when($filters['payment_type'] ?? null, fn ($query, $paymentType) => $query->where('payment_type', 'like', "%{$paymentType}%"))
-                ->when(($filters['priority'] ?? null) === 'yes', fn ($query) => $query->where('is_priority', true))
-                ->when(($filters['priority'] ?? null) === 'no', fn ($query) => $query->where('is_priority', false))
+                ->when($filters['priorities'] ?? null, function ($query, $priorities) {
+                    $query->whereIn('is_priority', collect($priorities)->map(fn ($priority) => $priority === 'yes')->all());
+                })
                 ->when($filters['date_from'] ?? null, fn ($query, $date) => $query->whereDate($dateReference, '>=', $date))
                 ->when($filters['date_to'] ?? null, fn ($query, $date) => $query->whereDate($dateReference, '<=', $date))
                 ->when($filters['tracking_numbers'] ?? null, fn ($query, $value) => $query->whereIn('waybill_number', $splitValues($value)))

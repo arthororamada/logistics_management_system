@@ -7,11 +7,11 @@
     <x-card title="Waybill Advanced Search" subtitle="Use one or more fields below. No records load until you search.">
         <form method="GET" action="{{ route('waybills.index') }}" class="advanced-waybill-form">
             <div class="advanced-waybill-grid">
-                <div class="form-group"><select id="creator_id" name="creator_id" aria-label="Creator"><option value="">Select creator</option>@foreach($creators as $creator)<option value="{{ $creator->id }}" @selected(($filters['creator_id'] ?? null) == $creator->id)>{{ $creator->name }} ({{ $creator->username }})</option>@endforeach</select></div>
-                <div class="form-group"><select id="client_id" name="client_id" aria-label="Client"><option value="">Select client</option>@foreach($clients as $client)<option value="{{ $client->id }}" @selected(($filters['client_id'] ?? null) == $client->id)>{{ $client->client_code }} - {{ $client->client_name }}</option>@endforeach</select></div>
-                <div class="form-group"><select id="priority" name="priority" aria-label="Priority"><option value="">All priorities</option><option value="yes" @selected(($filters['priority'] ?? '') === 'yes')>Priority</option><option value="no" @selected(($filters['priority'] ?? '') === 'no')>Standard</option></select></div>
+                <div class="form-group"><select id="creator_ids" name="creator_ids[]" multiple data-searchable-multiple data-placeholder="Select creator" data-search-placeholder="Search creators" aria-label="Creator">@foreach($creators as $creator)<option value="{{ $creator->id }}" @selected(in_array($creator->id, $filters['creator_ids'] ?? []))>{{ $creator->name }} ({{ $creator->username }})</option>@endforeach</select></div>
+                <div class="form-group"><select id="client_ids" name="client_ids[]" multiple data-searchable-multiple data-placeholder="Select client" data-search-placeholder="Search clients" aria-label="Client">@foreach($clients as $client)<option value="{{ $client->id }}" @selected(in_array($client->id, $filters['client_ids'] ?? []))>{{ $client->client_code }} - {{ $client->client_name }}</option>@endforeach</select></div>
+                <div class="form-group"><select id="priorities" name="priorities[]" multiple data-searchable-multiple data-placeholder="Select priority" data-search-placeholder="Search priorities" aria-label="Priority"><option value="yes" @selected(in_array('yes', $filters['priorities'] ?? []))>Priority</option><option value="no" @selected(in_array('no', $filters['priorities'] ?? []))>Standard</option></select></div>
 
-                <div class="form-group"><select id="package_status" name="package_status" aria-label="Status"><option value="">Select status</option><option value="for_pickup" @selected(($filters['package_status'] ?? '') === 'for_pickup')>For Pickup</option><option value="in_transit" @selected(($filters['package_status'] ?? '') === 'in_transit')>In Transit</option><option value="delivered" @selected(($filters['package_status'] ?? '') === 'delivered')>Delivered</option><option value="cancelled" @selected(($filters['package_status'] ?? '') === 'cancelled')>Cancelled</option></select></div>
+                <div class="form-group"><select id="package_statuses" name="package_statuses[]" multiple data-searchable-multiple data-placeholder="Select status" data-search-placeholder="Search statuses" aria-label="Status"><option value="for_pickup" @selected(in_array('for_pickup', $filters['package_statuses'] ?? []))>For Pickup</option><option value="in_transit" @selected(in_array('in_transit', $filters['package_statuses'] ?? []))>In Transit</option><option value="delivered" @selected(in_array('delivered', $filters['package_statuses'] ?? []))>Delivered</option><option value="cancelled" @selected(in_array('cancelled', $filters['package_statuses'] ?? []))>Cancelled</option></select></div>
                 <div class="form-group"><input id="package_location" name="package_location" value="{{ $filters['package_location'] ?? '' }}" placeholder="Current location" aria-label="Current location"></div>
                 <div class="form-group"><input id="payment_type" name="payment_type" value="{{ $filters['payment_type'] ?? '' }}" placeholder="Payment type" aria-label="Payment type"></div>
 
@@ -53,9 +53,95 @@ document.addEventListener('DOMContentLoaded', () => {
         : null;
 
     const filterForm = document.querySelector('.advanced-waybill-form');
+    const multiSelects = [];
+    document.querySelectorAll('select[data-searchable-multiple]').forEach((select) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'searchable-multi-select';
+        select.before(wrapper);
+        wrapper.appendChild(select);
+        select.classList.add('searchable-multi-native');
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'searchable-multi-trigger';
+        trigger.setAttribute('aria-expanded', 'false');
+        const triggerText = document.createElement('span');
+        triggerText.className = 'searchable-multi-values';
+        const triggerArrow = document.createElement('span');
+        triggerArrow.className = 'searchable-multi-arrow';
+        triggerArrow.textContent = '⌄';
+        trigger.append(triggerText, triggerArrow);
+
+        const menu = document.createElement('div');
+        menu.className = 'searchable-multi-menu';
+        menu.hidden = true;
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'searchable-multi-search';
+        search.placeholder = select.dataset.searchPlaceholder || 'Search options';
+        search.setAttribute('aria-label', search.placeholder);
+        const options = document.createElement('div');
+        options.className = 'searchable-multi-options';
+        const optionRows = [...select.options].map((option) => {
+            const label = document.createElement('label');
+            label.className = 'searchable-multi-option';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = option.selected;
+            const text = document.createElement('span');
+            text.textContent = option.text;
+            label.append(checkbox, text);
+            checkbox.addEventListener('change', () => {
+                option.selected = checkbox.checked;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            options.appendChild(label);
+            return { label, text: option.text.toLocaleLowerCase(), checkbox };
+        });
+        menu.append(search, options);
+        wrapper.append(trigger, menu);
+
+        const render = () => {
+            const selectedOptions = [...select.selectedOptions];
+            triggerText.replaceChildren();
+            if (selectedOptions.length === 0) {
+                triggerText.textContent = select.dataset.placeholder;
+            } else {
+                selectedOptions.forEach((option) => {
+                    const value = document.createElement('span');
+                    value.className = 'searchable-multi-value';
+                    value.textContent = option.text;
+                    triggerText.appendChild(value);
+                });
+            }
+            trigger.classList.toggle('has-selection', selectedOptions.length > 0);
+            optionRows.forEach(({ checkbox }, index) => { checkbox.checked = select.options[index].selected; });
+        };
+        const close = () => { menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); wrapper.classList.remove('is-open'); };
+        trigger.addEventListener('click', () => {
+            const opening = menu.hidden;
+            multiSelects.forEach((control) => control.close());
+            if (opening) { menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); wrapper.classList.add('is-open'); search.focus(); }
+        });
+        search.addEventListener('input', () => {
+            const term = search.value.trim().toLocaleLowerCase();
+            optionRows.forEach((row) => { row.label.hidden = !row.text.includes(term); });
+        });
+        select.addEventListener('change', render);
+        multiSelects.push({ wrapper, close });
+        render();
+    });
+    document.addEventListener('click', (event) => multiSelects.forEach((control) => {
+        if (!control.wrapper.contains(event.target)) control.close();
+    }));
+
     document.querySelector('#clear-waybill-filters')?.addEventListener('click', () => {
         filterForm.querySelectorAll('input:not([type="hidden"]), textarea').forEach((field) => { field.value = ''; });
-        filterForm.querySelectorAll('select').forEach((field) => { field.selectedIndex = 0; });
+        filterForm.querySelectorAll('select').forEach((field) => {
+            if (field.multiple) [...field.options].forEach((option) => { option.selected = false; });
+            else field.selectedIndex = 0;
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        });
         rangePicker?.clear();
     });
 
