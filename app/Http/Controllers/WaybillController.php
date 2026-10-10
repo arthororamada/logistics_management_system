@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\User;
 use App\Models\WaybillPackage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -38,17 +40,74 @@ class WaybillController extends Controller
 
     public function index(Request $request): View
     {
-        $search = trim((string) $request->input('search'));
-        $packages = WaybillPackage::with(['client', 'seller', 'items'])
-            ->where('is_deleted', false)
-            ->when($search, fn ($query) => $query->where(fn ($builder) => $builder
-                ->where('waybill_number', 'like', "%{$search}%")
-                ->orWhere('order_number', 'like', "%{$search}%")
-                ->orWhere('package_id', 'like', "%{$search}%")
-                ->orWhere('buyer_name', 'like', "%{$search}%")))
-            ->latest()->paginate(15)->withQueryString();
+        $rangeParts = preg_split('/\s+to\s+/', trim((string) $request->input('date_range')), 2);
+        $request->merge([
+            'date_from' => $rangeParts[0] ?? null,
+            'date_to' => $rangeParts[1] ?? ($rangeParts[0] ?? null),
+        ]);
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'creator_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
+            'client_id' => ['nullable', 'integer', Rule::exists('clients', 'id')],
+            'package_status' => ['nullable', 'string', 'max:100'],
+            'package_location' => ['nullable', 'string', 'max:255'],
+            'payment_type' => ['nullable', 'string', 'max:100'],
+            'priority' => ['nullable', Rule::in(['yes', 'no'])],
+            'date_reference' => ['nullable', Rule::in(['created_at', 'updated_at', 'handover_date'])],
+            'date_range' => ['nullable', 'string', 'max:30', 'regex:/^\d{4}-\d{2}-\d{2}(\s+to\s+\d{4}-\d{2}-\d{2})?$/'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            'tracking_numbers' => ['nullable', 'string', 'max:5000'],
+            'package_ids' => ['nullable', 'string', 'max:5000'],
+            'references' => ['nullable', 'string', 'max:5000'],
+            'order_numbers' => ['nullable', 'string', 'max:5000'],
+        ]);
+        $filters = array_map(fn ($value) => is_string($value) ? trim($value) : $value, $filters);
+        $request->query->remove('date_from');
+        $request->query->remove('date_to');
+        $hasFilters = collect(['search', 'creator_id', 'client_id', 'package_status', 'package_location', 'payment_type', 'priority', 'date_range', 'tracking_numbers', 'package_ids', 'references', 'order_numbers'])
+            ->contains(fn ($key) => ($filters[$key] ?? null) !== null && ($filters[$key] ?? '') !== '');
+        $dateReference = $filters['date_reference'] ?? 'created_at';
+        $clients = Client::where('is_active', true)->orderBy('client_name')->get(['id', 'client_code', 'client_name']);
+        $creators = User::where('is_active', true)->orderBy('name')->get(['id', 'name', 'username']);
+        $splitValues = fn ($value) => array_values(array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $value))));
 
-        return view('waybills.index', compact('packages', 'search'));
+        if (!$hasFilters) {
+            $packages = new LengthAwarePaginator([], 0, 15, 1, ['path' => $request->url(), 'query' => $request->query()]);
+        } else {
+            $packages = WaybillPackage::with(['client', 'seller', 'items'])
+                ->where('is_deleted', false)
+                ->when($filters['search'] ?? null, fn ($query, $search) => $query->where(fn ($builder) => $builder
+                    ->where('waybill_number', 'like', "%{$search}%")
+                    ->orWhere('order_number', 'like', "%{$search}%")
+                    ->orWhere('package_id', 'like', "%{$search}%")
+                    ->orWhere('buyer_name', 'like', "%{$search}%")))
+                ->when($filters['creator_id'] ?? null, fn ($query, $creatorId) => $query->where('created_by', $creatorId))
+                ->when($filters['client_id'] ?? null, fn ($query, $clientId) => $query->where('client_id', $clientId))
+                ->when($filters['package_status'] ?? null, fn ($query, $status) => $query->where('package_status', $status))
+                ->when($filters['package_location'] ?? null, fn ($query, $location) => $query->where('package_location', 'like', "%{$location}%"))
+                ->when($filters['payment_type'] ?? null, fn ($query, $paymentType) => $query->where('payment_type', 'like', "%{$paymentType}%"))
+                ->when(($filters['priority'] ?? null) === 'yes', fn ($query) => $query->where('is_priority', true))
+                ->when(($filters['priority'] ?? null) === 'no', fn ($query) => $query->where('is_priority', false))
+                ->when($filters['date_from'] ?? null, fn ($query, $date) => $query->whereDate($dateReference, '>=', $date))
+                ->when($filters['date_to'] ?? null, fn ($query, $date) => $query->whereDate($dateReference, '<=', $date))
+                ->when($filters['tracking_numbers'] ?? null, fn ($query, $value) => $query->whereIn('waybill_number', $splitValues($value)))
+                ->when($filters['package_ids'] ?? null, fn ($query, $value) => $query->whereIn('package_id', $splitValues($value)))
+                ->when($filters['order_numbers'] ?? null, fn ($query, $value) => $query->whereIn('order_number', $splitValues($value)))
+                ->when($filters['references'] ?? null, function ($query, $value) use ($splitValues) {
+                    $references = $splitValues($value);
+                    $query->where(function ($builder) use ($references) {
+                        foreach ($references as $reference) {
+                            $builder->orWhere(function ($referenceQuery) use ($reference) {
+                                foreach (range(1, 5) as $number) $referenceQuery->orWhere("package_reference_{$number}", $reference);
+                            });
+                        }
+                    });
+                })
+                ->latest()->paginate(15)->withQueryString();
+        }
+
+        return view('waybills.index', compact('packages', 'filters', 'hasFilters', 'clients', 'creators', 'dateReference'));
     }
 
     public function create(): View
@@ -74,7 +133,7 @@ class WaybillController extends Controller
         DB::transaction(function () use ($validated, $items, $sellerData, $userId) {
             $seller = $this->resolveSeller($sellerData);
             $waybillNumber = $this->nextWaybillNumber((int) $validated['client_id']);
-            $package = WaybillPackage::create([...$validated, 'waybill_number' => $waybillNumber, 'seller_id' => $seller->id, 'created_by' => $userId, 'updated_by' => $userId]);
+            $package = WaybillPackage::create([...$validated, 'waybill_number' => $waybillNumber, 'package_status' => 'for_pickup', 'seller_id' => $seller->id, 'created_by' => $userId, 'updated_by' => $userId]);
             $firstItem = null;
             foreach ($items as $itemData) {
                 $item = $package->items()->create([...$itemData, 'created_by' => $userId, 'updated_by' => $userId]);
@@ -165,7 +224,10 @@ class WaybillController extends Controller
             ...($forImport ? ['waybill_number' => ['required', 'string', 'max:100', Rule::unique('packages', 'waybill_number')]] : []),
             'order_number' => ['nullable', 'string', 'max:100'],
             'package_id' => ['required', 'string', 'max:100', Rule::unique('packages', 'package_id')],
-            'package_location' => ['nullable', 'string', 'max:255'], 'package_status' => ['required', 'string', 'max:100'],
+            ...($forImport ? [
+                'package_location' => ['nullable', 'string', 'max:255'],
+                'package_status' => ['required', 'string', 'max:100'],
+            ] : []),
             'package_description' => ['nullable', 'string', 'max:5000'], 'package_sku' => ['nullable', 'string', 'max:100'],
             'package_size' => ['nullable', 'string', 'max:100'], 'package_quantity' => ['required', 'integer', 'min:1'],
             'package_length' => ['nullable', 'numeric', 'min:0'], 'package_width' => ['nullable', 'numeric', 'min:0'],

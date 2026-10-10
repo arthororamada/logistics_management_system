@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('order_number', 100)->nullable();
             $table->string('package_id', 100)->unique();
             $table->string('package_location', 255)->nullable();
-            $table->string('package_status', 100);
+            $table->string('package_status', 100)->default('for_pickup');
             $table->text('package_description')->nullable();
             $table->string('package_sku', 100)->nullable();
             $table->string('package_size', 100)->nullable();
