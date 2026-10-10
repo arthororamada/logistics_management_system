@@ -7,6 +7,10 @@
             ['label' => 'Trips', 'icon' => 'trips'],
             ['label' => 'Maintenance', 'icon' => 'maintenance'],
         ],
+        'Document Manifests' => [
+            ['label' => 'Pickup', 'icon' => 'reports', 'route' => 'pickup.index', 'permission' => 'pickup.view'],
+            ['label' => 'Inbound', 'icon' => 'reports', 'route' => 'inbound.index', 'permission' => 'inbound.view'],
+        ],
         'Trip Maintenance' => [
             ['label' => 'Clients', 'icon' => 'user', 'route' => 'clients.index', 'permission' => 'clients.view'],
             ['label' => 'Routes', 'icon' => 'trips', 'route' => 'routes.index', 'permission' => 'routes.view'],

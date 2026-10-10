@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PickupController;
+use App\Http\Controllers\InboundController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WarehouseController;
@@ -61,6 +63,19 @@ Route::get('/template', function () {
 })->middleware(['auth', 'permission:template.view'])->name('template');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/document-manifests/inbound', [InboundController::class, 'index'])->middleware('permission:inbound.view')->name('inbound.index');
+    Route::post('/document-manifests/inbound', [InboundController::class, 'store'])->middleware(['permission:inbound.view', 'permission:inbound.create'])->name('inbound.store');
+    Route::post('/document-manifests/inbound/waybills', [InboundController::class, 'addWaybills'])->middleware(['permission:inbound.view', 'permission:inbound.create'])->name('inbound.waybills.add');
+    Route::delete('/document-manifests/inbound/waybills', [InboundController::class, 'removeWaybill'])->middleware(['permission:inbound.view', 'permission:inbound.create'])->name('inbound.waybills.remove');
+    Route::get('/document-manifests/inbound/{inbound}', [InboundController::class, 'show'])->middleware('permission:inbound.view')->name('inbound.show');
+
+    Route::get('/document-manifests/pickup', [PickupController::class, 'index'])->middleware('permission:pickup.view')->name('pickup.index');
+    Route::post('/document-manifests/pickup', [PickupController::class, 'store'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.store');
+    Route::post('/document-manifests/pickup/waybills', [PickupController::class, 'addWaybills'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.waybills.add');
+    Route::delete('/document-manifests/pickup/waybills', [PickupController::class, 'removeWaybill'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.waybills.remove');
+    Route::get('/document-manifests/pickup/{pickup}', [PickupController::class, 'show'])->middleware('permission:pickup.view')->name('pickup.show');
+    Route::post('/document-manifests/pickup/{pickup}/dispatch', [PickupController::class, 'dispatch'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.dispatch');
+
     Route::get('/users', [UserController::class, 'index'])->middleware('permission:users.view')->name('users.index');
     Route::get('/users/create', [UserController::class, 'create'])->middleware('permission:users.create')->name('users.create');
     Route::post('/users', [UserController::class, 'store'])->middleware('permission:users.create')->name('users.store');
