@@ -1,0 +1,13 @@
+@extends('layouts.app')
+@section('title', 'Trip Types')
+@php($breadcrumbs = [['label' => 'Home', 'url' => route('dashboard')], ['label' => 'Trip Maintenance'], ['label' => 'Trip Types']])
+@section('content')
+    <section class="page-heading"><div><p class="eyebrow">Trip Maintenance</p><h2>Trip Types</h2><p>Maintain the trip classifications used across fleet operations.</p></div>@if(auth()->user()->hasPermission('trip-types.create'))<x-button href="{{ route('trip-types.create') }}" variant="primary" icon="plus">Add Trip Type</x-button>@endif</section>
+    <x-card title="Trip Type Directory" subtitle="Search, filter, and manage trip type records.">
+        <form method="GET" action="{{ route('trip-types.index') }}" class="filter-bar"><label class="filter-search"><x-icon name="search" :size="17" /><input type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search trip type"></label><select name="status" aria-label="Filter by status"><option value="">All statuses</option><option value="active" @selected(($filters['status'] ?? '') === 'active')>Active</option><option value="inactive" @selected(($filters['status'] ?? '') === 'inactive')>Inactive</option></select><button type="submit" class="button button-outline">Filter</button>@if(array_filter($filters))<a href="{{ route('trip-types.index') }}" class="clear-filter">Clear</a>@endif</form>
+        <div class="table-wrap"><table class="access-table"><thead><tr><th>Trip Type</th><th>Status</th><th>Created</th><th class="align-right">Actions</th></tr></thead><tbody>
+            @forelse($tripTypes as $tripType)<tr><td><div class="role-name-cell"><span class="role-icon"><x-icon name="trips" :size="17" /></span><div><strong>{{ $tripType->trip_type }}</strong></div></div></td><td><x-status-badge :status="$tripType->is_active ? 'active' : 'inactive'" /></td><td><span class="date-label">{{ $tripType->created_at?->format('M d, Y') }}</span></td><td class="align-right"><div class="row-actions">@if(auth()->user()->hasPermission('trip-types.update'))<a href="{{ route('trip-types.edit', $tripType) }}" class="table-action">Edit</a>@endif @if(auth()->user()->hasPermission('trip-types.delete'))<form method="POST" action="{{ route('trip-types.destroy', $tripType) }}" onsubmit="return confirm('Delete this trip type? This action cannot be undone.')">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif</div></td></tr>
+            @empty<tr><td colspan="4" class="empty-table">No trip types match the selected filters.</td></tr>@endforelse
+        </tbody></table></div>@if($tripTypes->hasPages())<div class="pagination-links">{{ $tripTypes->links() }}</div>@endif
+    </x-card>
+@endsection

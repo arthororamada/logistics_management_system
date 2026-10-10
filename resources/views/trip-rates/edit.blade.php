@@ -1,0 +1,1 @@
+@extends('layouts.app') @section('title','Edit Trip Rate') @section('content')<section class="page-heading"><div><p class="eyebrow">Tariffs</p><h2>Edit Trip Rate</h2></div></section><form method="POST" action="{{ route('trip-rates.update',$tripRate) }}">@csrf @method('PUT') @include('trip-rates.partials.form',['submitLabel'=>'Save Changes'])</form>@endsection

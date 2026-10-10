@@ -1,0 +1,1 @@
+@extends('layouts.app') @section('title','Add Trip Rate') @section('content')<section class="page-heading"><div><p class="eyebrow">Tariffs</p><h2>Add Trip Rate</h2></div></section><form method="POST" action="{{ route('trip-rates.store') }}">@csrf @include('trip-rates.partials.form',['submitLabel'=>'Create Trip Rate'])</form>@endsection
