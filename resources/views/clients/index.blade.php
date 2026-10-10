@@ -30,7 +30,7 @@
                             <td><x-status-badge :status="$client->is_active ? 'active' : 'inactive'" /></td>
                             <td class="align-right"><div class="row-actions">
                                 @if(auth()->user()->hasPermission('clients.update'))<a href="{{ route('clients.edit', $client) }}" class="table-action">Edit</a>@endif
-                                @if(auth()->user()->hasPermission('clients.delete'))<form method="POST" action="{{ route('clients.destroy', $client) }}" onsubmit="return confirm('Delete this client? This action cannot be undone.')">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif
+                                @if(auth()->user()->hasPermission('clients.delete'))<form method="POST" action="{{ route('clients.destroy', $client) }}" data-confirm="Delete this client? This action cannot be undone." data-confirm-title="Delete record?" data-confirm-button="Delete">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif
                             </div></td>
                         </tr>
                     @empty

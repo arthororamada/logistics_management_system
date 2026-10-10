@@ -28,12 +28,12 @@
             const loadFallback = async () => {
                 const params = new URLSearchParams({ draw: '1', start: '0', length: '100', status: status?.value ?? '' });
                 const response = await fetch(`${ajaxUrl}?${params}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                const payload = await response.json();
+                if (!response.ok) throw new Error(`Request failed (${response.status}).`); const payload = await response.json();
                 const body = tableElement.querySelector('tbody');
                 body.innerHTML = payload.data.length ? payload.data.map((row) => `<tr><td>${row.province}</td><td>${row.city}</td><td>${row.brgy}</td><td class="coordinate-label">${row.longitued}</td><td class="coordinate-label">${row.latitude}</td><td>${row.status}</td><td class="align-right">${row.actions}</td></tr>`).join('') : '<tr><td colspan="7" class="empty-table">No routes found.</td></tr>';
             };
-            loadFallback().catch(() => { tableElement.querySelector('tbody').innerHTML = '<tr><td colspan="7" class="empty-table">Unable to load routes.</td></tr>'; });
-            status?.addEventListener('change', loadFallback);
+            const handleDirectoryError = () => window.AppNotifications.error('Unable to load routes. Please try again.'); loadFallback().catch(() => { handleDirectoryError(); tableElement.querySelector('tbody').innerHTML = '<tr><td colspan="7" class="empty-table">Unable to load routes.</td></tr>'; });
+            status?.addEventListener('change', () => loadFallback().catch(handleDirectoryError));
         });
     </script>
 @endsection

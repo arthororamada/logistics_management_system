@@ -31,7 +31,7 @@
                                 <div class="row-actions">
                                     @if(auth()->user()->hasPermission('roles.update'))<a href="{{ route('roles.edit', $role) }}" class="table-action">Edit</a>@endif
                                     @if(!$role->is_system && auth()->user()->hasPermission('roles.delete'))
-                                        <form method="POST" action="{{ route('roles.destroy', $role) }}" onsubmit="return confirm('Delete this role? This action cannot be undone.')">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>
+                                        <form method="POST" action="{{ route('roles.destroy', $role) }}" data-confirm="Delete this role? This action cannot be undone." data-confirm-title="Delete record?" data-confirm-button="Delete">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>
                                     @endif
                                 </div>
                             </td>

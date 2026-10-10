@@ -1,7 +1,9 @@
 import './bootstrap';
+import { installNotifications } from './notifications';
 import './trips';
 
 document.addEventListener('DOMContentLoaded', () => {
+    installNotifications();
     document.querySelectorAll('[data-term-department]').forEach((departmentSelect) => {
         const campusSelect = document.querySelector('[data-term-campus]');
         if (!campusSelect) return;

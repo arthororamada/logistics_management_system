@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { personnelSalaryCents } from '../../resources/js/trip-calculations.js';
 import { matchingSelectOptions } from '../../resources/js/trip-searchable-select.js';
 import { createTripDialogs, withTripSubmissionLock, readTripResponse } from '../../resources/js/trip-dialogs.js';
+import { createNotifications } from '../../resources/js/notification-core.js';
 
 test('trip success requires a confirmed backend response and failures retain useful errors', async () => {
     const saved = { message: 'Dispatched', redirect: '/trips/1', trip: { id: 1 } };
@@ -16,7 +17,7 @@ test('trip success requires a confirmed backend response and failures retain use
 test('trip confirmations require explicit approval and show the correct action', async () => {
     const calls = [];
     let response = { isDismissed: true };
-    const dialogs = createTripDialogs({ fire: async (options) => { calls.push(options); return response; } });
+    const dialogs = createTripDialogs(createNotifications({ fire: async (options) => { calls.push(options); return response; } }));
     assert.equal(await dialogs.confirm('dispatch'), false);
     assert.equal(calls[0].confirmButtonText, 'Confirm Dispatch');
     assert.match(calls[0].text, /read-only/);

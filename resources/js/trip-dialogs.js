@@ -1,3 +1,5 @@
+export { withSubmissionLock as withTripSubmissionLock } from './notification-core.js';
+
 export async function readTripResponse(response) {
     const result = await response.json().catch(() => null);
     if (!response.ok) {
@@ -10,45 +12,23 @@ export async function readTripResponse(response) {
     return result;
 }
 
-export function createTripDialogs(dialog) {
+export function createTripDialogs(notifications) {
     return {
-        async confirm(action, message) {
+        confirm: async (action, message) => {
             const complete = action === 'complete';
-            const result = await dialog.fire({
+            return notifications.confirm(message || (complete
+                ? 'This trip will be marked as completed. Standard editing will no longer be available.'
+                : 'This truck will be dispatched and the trip form will become read-only.'), {
                 title: complete ? 'Complete Trip?' : 'Dispatch Truck?',
-                text: message || (complete
-                    ? 'This trip will be marked as completed. Standard editing will no longer be available.'
-                    : 'This truck will be dispatched and the trip form will become read-only.'),
-                icon: 'warning', showCancelButton: true, focusCancel: true,
                 confirmButtonText: complete ? 'Complete Trip' : 'Confirm Dispatch',
-                cancelButtonText: 'Cancel',
                 confirmButtonColor: complete ? '#15803d' : '#1d4ed8',
-                cancelButtonColor: '#475569',
             });
-            return result.isConfirmed === true;
         },
         success(message) {
-            return dialog.fire({ title: 'Success', text: message, icon: 'success', confirmButtonColor: '#15803d' });
+            return notifications.success(message);
         },
         error(message) {
-            return dialog.fire({ title: 'Unable to save trip', text: message, icon: 'error', confirmButtonColor: '#b91c1c' });
+            return notifications.error(message, 'Unable to save trip');
         },
     };
-}
-
-// Lock before opening the dialog so repeated submissions cannot open parallel confirmations.
-export async function withTripSubmissionLock(form, operation) {
-    if (form.dataset.busy) return;
-    const buttons = [...form.querySelectorAll('button')];
-    const states = buttons.map((button) => [button, button.disabled]);
-    form.dataset.busy = '1';
-    form.setAttribute('aria-busy', 'true');
-    buttons.forEach((button) => { button.disabled = true; });
-    try {
-        return await operation();
-    } finally {
-        delete form.dataset.busy;
-        form.removeAttribute('aria-busy');
-        states.forEach(([button, disabled]) => { button.disabled = disabled; });
-    }
 }

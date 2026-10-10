@@ -30,7 +30,7 @@
                             <td><span class="date-label">{{ $vehicleGroup->created_at?->format('M d, Y') }}</span></td>
                             <td class="align-right"><div class="row-actions">
                                 @if(auth()->user()->hasPermission('vehicle-groups.update'))<a href="{{ route('vehicle-groups.edit', $vehicleGroup) }}" class="table-action">Edit</a>@endif
-                                @if(auth()->user()->hasPermission('vehicle-groups.delete'))<form method="POST" action="{{ route('vehicle-groups.destroy', $vehicleGroup) }}" onsubmit="return confirm('Delete this vehicle group? This action cannot be undone.')">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif
+                                @if(auth()->user()->hasPermission('vehicle-groups.delete'))<form method="POST" action="{{ route('vehicle-groups.destroy', $vehicleGroup) }}" data-confirm="Delete this vehicle group? This action cannot be undone." data-confirm-title="Delete record?" data-confirm-button="Delete">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif
                             </div></td>
                         </tr>
                     @empty

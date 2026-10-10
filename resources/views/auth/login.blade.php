@@ -9,6 +9,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="auth-body">
+    <x-notifications />
     <main class="auth-page">
         <section class="auth-identity" aria-label="Fleet management system">
             <div class="auth-identity-content">

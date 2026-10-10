@@ -3,6 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "test": "node --test tests/js/*.test.js",
         "dev": "vite",
         "build": "vite build",
         "test:trips": "node --test tests/js/trip-calculations.test.js"

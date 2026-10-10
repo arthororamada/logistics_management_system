@@ -1,11 +1,10 @@
 import { personnelSalaryCents } from './trip-calculations';
 import { enhanceTripSelects, refreshTripSelects, expandTripSection } from './trip-searchable-select';
-import Swal from 'sweetalert2';
-import 'sweetalert2/dist/sweetalert2.min.css';
+import { notifications } from './notifications';
 import { createTripDialogs, withTripSubmissionLock, readTripResponse } from './trip-dialogs';
 
 document.addEventListener('DOMContentLoaded', () => {
-    const dialogs = createTripDialogs(Swal);
+    const dialogs = createTripDialogs(notifications);
     const errors = document.querySelector('[data-trip-errors]');
     const report = (message) => {
         if (errors) {
