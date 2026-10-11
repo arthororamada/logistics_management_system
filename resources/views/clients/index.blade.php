@@ -12,7 +12,7 @@
 
     <x-card title="Client Directory" subtitle="Search, filter, and manage client records.">
         <form method="GET" action="{{ route('clients.index') }}" class="filter-bar">
-            <label class="filter-search"><x-icon name="search" :size="17" /><input type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search code, name, contact, or address"></label>
+            <label class="filter-search"><x-icon name="search" :size="17" /><input type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search client, location, email, or contact"></label>
             <select name="status" aria-label="Filter by status"><option value="">All statuses</option><option value="active" @selected(($filters['status'] ?? '') === 'active')>Active</option><option value="inactive" @selected(($filters['status'] ?? '') === 'inactive')>Inactive</option></select>
             <button type="submit" class="button button-outline">Filter</button>
             @if(array_filter($filters))<a href="{{ route('clients.index') }}" class="clear-filter">Clear</a>@endif
@@ -24,9 +24,9 @@
                     @forelse($clients as $client)
                         <tr>
                             <td><div class="role-name-cell"><span class="role-icon"><x-icon name="user" :size="17" /></span><div><strong>{{ $client->client_name }}</strong><small class="warehouse-code">{{ $client->client_code }}</small></div></div></td>
-                            <td><span class="warehouse-address">{{ $client->address }}</span></td>
+                            <td><span class="warehouse-address">{{ $client->full_address }}</span><small>{{ implode(', ', array_filter([$client->barangay, $client->city, $client->province])) }}@if($client->building_type) · {{ $client->building_type }}@endif</small></td>
                             <td>{{ $client->focal_person }}</td>
-                            <td><span class="coordinate-label">{{ $client->contact_number }}</span></td>
+                            <td><span class="coordinate-label">{{ $client->contact_number }}</span>@if($client->email)<small>{{ $client->email }}</small>@endif</td>
                             <td><x-status-badge :status="$client->is_active ? 'active' : 'inactive'" /></td>
                             <td class="align-right"><div class="row-actions">
                                 @if(auth()->user()->hasPermission('clients.update'))<a href="{{ route('clients.edit', $client) }}" class="table-action">Edit</a>@endif

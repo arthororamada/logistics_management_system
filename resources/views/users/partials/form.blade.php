@@ -4,6 +4,11 @@
         <div class="form-stack">
             <div class="form-group"><label for="name">Full name <span class="required">*</span></label><div class="input-control @error('name') has-error @enderror"><x-icon name="user" :size="18" /><input id="name" name="name" value="{{ old('name', $user->name) }}" maxlength="150" required placeholder="Enter the user’s full name"></div>@error('name')<p class="form-error">{{ $message }}</p>@enderror</div>
             <div class="form-group"><label for="username">Username <span class="required">*</span></label><div class="input-control @error('username') has-error @enderror"><x-icon name="user" :size="18" /><input id="username" name="username" value="{{ old('username', $user->username) }}" minlength="3" maxlength="50" autocomplete="off" required placeholder="e.g. maria.santos"></div><p class="field-hint">Letters, numbers, periods, underscores, and hyphens only.</p>@error('username')<p class="form-error">{{ $message }}</p>@enderror</div>
+            <div class="form-group">
+                <label for="location_code">Location <span class="required">*</span></label>
+                <select id="location_code" name="location_code" required class="form-select @error('location_code') has-error @enderror"><option value="">Select a location</option>@foreach($locations as $location)<option value="{{ $location->location_code }}" @selected(old('location_code', $user->location_code) === $location->location_code)>{{ $location->location_name }} ({{ $location->location_code }})</option>@endforeach</select>
+                @error('location_code')<p class="form-error">{{ $message }}</p>@enderror
+            </div>
             <label class="account-status-control"><input type="hidden" name="is_active" value="0"><input type="checkbox" name="is_active" value="1" @checked((bool) old('is_active', $user->exists ? $user->is_active : true))><span class="status-switch"></span><span><strong>Active account</strong><small>Inactive users cannot sign in to the application.</small></span></label>
         </div>
     </x-card>

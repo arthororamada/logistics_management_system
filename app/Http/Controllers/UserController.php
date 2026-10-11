@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Location;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -21,11 +22,13 @@ class UserController extends Controller
             'role' => ['nullable', 'integer', 'exists:roles,id'],
         ]);
 
-        $users = User::with('roles')
+        $users = User::with(['roles', 'location'])
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where(fn ($builder) => $builder
                     ->where('name', 'like', "%{$search}%")
-                    ->orWhere('username', 'like', "%{$search}%"));
+                    ->orWhere('username', 'like', "%{$search}%")
+                    ->orWhere('location_code', 'like', "%{$search}%")
+                    ->orWhereHas('location', fn ($locationQuery) => $locationQuery->where('location_name', 'like', "%{$search}%")));
             })
             ->when(($filters['status'] ?? null) === 'active', fn ($query) => $query->where('is_active', true))
             ->when(($filters['status'] ?? null) === 'inactive', fn ($query) => $query->where('is_active', false))
@@ -39,7 +42,12 @@ class UserController extends Controller
 
     public function create(): View
     {
-        return view('users.create', ['user' => new User(), 'roles' => Role::orderByDesc('is_system')->orderBy('name')->get(), 'selectedRoles' => collect()]);
+        return view('users.create', [
+            'user' => new User(),
+            'roles' => Role::orderByDesc('is_system')->orderBy('name')->get(),
+            'locations' => $this->availableLocations(),
+            'selectedRoles' => collect(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -49,6 +57,7 @@ class UserController extends Controller
             $user = User::create([
                 'name' => $validated['name'],
                 'username' => $validated['username'],
+                'location_code' => $validated['location_code'],
                 'password' => $validated['password'],
                 'is_active' => $validated['is_active'],
             ]);
@@ -59,7 +68,12 @@ class UserController extends Controller
 
     public function edit(User $user): View
     {
-        return view('users.edit', ['user' => $user, 'roles' => Role::orderByDesc('is_system')->orderBy('name')->get(), 'selectedRoles' => $user->roles()->pluck('roles.id')]);
+        return view('users.edit', [
+            'user' => $user,
+            'roles' => Role::orderByDesc('is_system')->orderBy('name')->get(),
+            'locations' => $this->availableLocations(),
+            'selectedRoles' => $user->roles()->pluck('roles.id'),
+        ]);
     }
 
     public function update(Request $request, User $user): RedirectResponse
@@ -75,7 +89,7 @@ class UserController extends Controller
         }
 
         DB::transaction(function () use ($validated, $user) {
-            $attributes = ['name' => $validated['name'], 'username' => $validated['username'], 'is_active' => $validated['is_active']];
+            $attributes = ['name' => $validated['name'], 'username' => $validated['username'], 'location_code' => $validated['location_code'], 'is_active' => $validated['is_active']];
             if (! empty($validated['password'])) $attributes['password'] = $validated['password'];
             $user->update($attributes);
             $user->roles()->sync($validated['roles']);
@@ -95,13 +109,24 @@ class UserController extends Controller
 
     private function validateUser(Request $request, ?User $user = null): array
     {
+        $request->merge(['location_code' => strtoupper(trim((string) $request->input('location_code')))]);
+
         return $request->validate([
             'name' => ['required', 'string', 'max:150'],
             'username' => ['required', 'string', 'min:3', 'max:50', 'regex:/^[A-Za-z0-9._-]+$/', Rule::unique('users', 'username')->ignore($user)],
+            'location_code' => ['required', 'string', 'max:30', Rule::exists('locations', 'location_code')->where(fn ($query) => $query->whereNull('is_deleted'))],
             'password' => [$user ? 'nullable' : 'required', 'confirmed', Password::min(8)->letters()->numbers()],
             'is_active' => ['required', 'boolean'],
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => ['integer', 'exists:roles,id'],
         ]);
+    }
+
+    private function availableLocations()
+    {
+        return Location::query()
+            ->whereNull('is_deleted')
+            ->orderBy('location_name')
+            ->get(['location_code', 'location_name']);
     }
 }

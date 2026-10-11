@@ -9,6 +9,7 @@ use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\ReturnController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\VehicleGroupController;
 use App\Http\Controllers\VehicleTypeController;
@@ -29,6 +30,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\TripRateController;
 use App\Http\Controllers\PersonnelTypeController;
 use App\Http\Controllers\PersonnelController;
+use App\Http\Controllers\WaybillController;
 use App\Models\Vehicle;
 use App\Models\VehicleStatus;
 use Illuminate\Support\Facades\Auth;
@@ -98,6 +100,15 @@ Route::middleware('auth')->group(function () {
     Route::delete('/document-manifests/pickup/waybills', [PickupController::class, 'removeWaybill'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.waybills.remove');
     Route::get('/document-manifests/pickup/{pickup}', [PickupController::class, 'show'])->middleware('permission:pickup.view')->name('pickup.show');
     Route::post('/document-manifests/pickup/{pickup}/dispatch', [PickupController::class, 'dispatch'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.dispatch');
+    Route::get('/waybills', [WaybillController::class, 'index'])->middleware('permission:waybills.view')->name('waybills.index');
+    Route::get('/waybills/create', [WaybillController::class, 'create'])->middleware('permission:waybills.create')->name('waybills.create');
+    Route::post('/waybills', [WaybillController::class, 'store'])->middleware('permission:waybills.create')->name('waybills.store');
+    Route::get('/waybills/upload', [WaybillController::class, 'upload'])->middleware('permission:waybills.upload')->name('waybills.upload');
+    Route::get('/waybills/upload/template', [WaybillController::class, 'template'])->middleware('permission:waybills.upload')->name('waybills.template');
+    Route::post('/waybills/upload/custom-template', [WaybillController::class, 'customTemplate'])->middleware('permission:waybills.upload')->name('waybills.custom-template');
+    Route::post('/waybills/upload', [WaybillController::class, 'import'])->middleware('permission:waybills.upload')->name('waybills.import');
+    Route::post('/waybills/upload/proceed', [WaybillController::class, 'proceedImport'])->middleware('permission:waybills.upload')->name('waybills.import.proceed');
+    Route::get('/waybills/{package}', [WaybillController::class, 'show'])->middleware('permission:waybills.view')->name('waybills.show');
 
     Route::get('/users', [UserController::class, 'index'])->middleware('permission:users.view')->name('users.index');
     Route::get('/users/create', [UserController::class, 'create'])->middleware('permission:users.create')->name('users.create');
@@ -105,6 +116,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/users/{user}/edit', [UserController::class, 'edit'])->middleware('permission:users.update')->name('users.edit');
     Route::put('/users/{user}', [UserController::class, 'update'])->middleware('permission:users.update')->name('users.update');
     Route::delete('/users/{user}', [UserController::class, 'destroy'])->middleware('permission:users.delete')->name('users.destroy');
+
+    Route::get('/locations', [LocationController::class, 'index'])->middleware('permission:locations.view')->name('locations.index');
+    Route::get('/locations/create', [LocationController::class, 'create'])->middleware('permission:locations.create')->name('locations.create');
+    Route::post('/locations', [LocationController::class, 'store'])->middleware('permission:locations.create')->name('locations.store');
+    Route::get('/locations/{location}/edit', [LocationController::class, 'edit'])->middleware('permission:locations.update')->name('locations.edit');
+    Route::put('/locations/{location}', [LocationController::class, 'update'])->middleware('permission:locations.update')->name('locations.update');
+    Route::delete('/locations/{location}', [LocationController::class, 'destroy'])->middleware('permission:locations.delete')->name('locations.destroy');
 
     Route::get('/roles', [RoleController::class, 'index'])->middleware('permission:roles.view')->name('roles.index');
     Route::get('/roles/create', [RoleController::class, 'create'])->middleware('permission:roles.create')->name('roles.create');

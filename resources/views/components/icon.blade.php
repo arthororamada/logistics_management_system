@@ -19,6 +19,8 @@
         'logout' => '<path d="M10 17l5-5-5-5M15 12H3M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>',
         'user' => '<path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/>',
         'plus' => '<path d="M12 5v14M5 12h14"/>',
+        'list' => '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r=".5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r=".5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r=".5" fill="currentColor" stroke="none"/>',
+        'upload' => '<path d="M12 16V4m-5 5 5-5 5 5M5 20h14"/>',
         'arrow-right' => '<path d="M5 12h14m-6-6 6 6-6 6"/>',
         'trend' => '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
         'school' => '<path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6M3 10l9-7 9 7"/>',
@@ -30,6 +32,7 @@
         'trips' => '<circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M8.5 16.5c3-1 4.5-3 3-5s0-4 4-4"/>',
         'maintenance' => '<path d="M14.7 6.3a4 4 0 0 0-5-5L12 3.6 8.4 7.2 6.1 4.9a4 4 0 0 0 5 5L4 17a2.1 2.1 0 0 0 3 3l7.1-7.1a4 4 0 0 0 5-5L16.8 10l-3.6-3.6 1.5-1.5"/>',
         'warehouse' => '<path d="M3 21V8l9-5 9 5v13M3 9l9 5 9-5M8 21v-8h8v8M8 17h8"/>',
+        'location' => '<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
         'vehicle-group' => '<path d="M3 16V9l2-3h8l3 5v5"/><circle cx="6" cy="16" r="2"/><circle cx="13" cy="16" r="2"/><path d="M14 7h4l3 4v5M16 16h3"/>',
     ];
 @endphp
