@@ -11,16 +11,16 @@
         @if($trip->current_status==='Dispatched' && auth()->user()->hasPermission('trips.complete'))
             <form method="POST" action="{{ route('trips.complete',$trip) }}" data-trip-action data-trip-operation="complete" data-confirm="Complete this trip? This cannot be undone through the standard interface.">@csrf<button class="button button-primary trip-action trip-action-complete">Complete Trip</button></form>
         @endif
-        @if($trip->current_status==='Open' && !auth()->user()->hasPermission('trips.update') && auth()->user()->hasPermission('trips.dispatch'))
-            <form method="POST" action="{{ route('trips.dispatch',$trip) }}" data-trip-action data-trip-operation="dispatch" data-confirm="Dispatch this truck using saved details?">@csrf<button class="button button-primary trip-action trip-action-dispatch">Dispatch Truck</button></form>
+        @if($trip->current_status==='Open' && auth()->user()->hasPermission('trips.dispatch'))
+            <form method="POST" action="{{ route('trips.dispatch',$trip) }}" data-trip-action data-trip-operation="dispatch" data-confirm="Dispatch this truck using saved details?">@csrf<input type="hidden" name="version" value="{{ $trip->version }}"><button class="button button-primary trip-action trip-action-dispatch">Dispatch Truck</button></form>
         @endif
     </div>
 </section>
-<div class="alert alert-error" data-trip-errors hidden role="alert"></div>
+<div class="alert alert-error" data-trip-errors hidden role="alert" tabindex="-1"></div>
 @if($errors->any())<div class="alert alert-error" role="alert">@foreach($errors->all() as $error)<div>{{ $error }}</div>@endforeach</div>@endif
 <div class="trip-workspace {{ $trip->current_status==='Open' && auth()->user()->hasPermission('trips.update') ? '' : 'trip-readonly' }}">
 @if($trip->current_status==='Open' && auth()->user()->hasPermission('trips.update'))
-<form method="POST" action="{{ route('trips.update',$trip) }}" id="trip-form" data-trip-editor data-availability-url="{{ route('trips.availability',$trip) }}" data-dispatch-url="{{ route('trips.dispatch',$trip) }}">
+<form method="POST" action="{{ route('trips.update',$trip) }}" id="trip-form" novalidate data-trip-editor data-availability-url="{{ route('trips.availability',$trip) }}">
     @csrf @method('PUT')<input type="hidden" name="version" value="{{ $trip->version }}">
     <x-card title="General Trip Information" data-trip-section="general" :collapsible="true" :collapsed="true" id="trip-section-general">
         <div class="trip-form-grid">
@@ -48,7 +48,9 @@
     <x-card :title="$title" :data-trip-section="$collection" :collapsible="true" :collapsed="true" :id="'trip-section-'.$collection">
         <div data-trip-collection="{{ $collection }}">
             @php($relation = ['personnels'=>'personnels','segments'=>'segments','costs'=>'costs'][$collection])
-            @foreach(old($collection,$collection==='costs' ? $costRows : $trip->$relation->toArray()) as $row)
+            @php($rows = old($collection,$collection==='costs' ? $costRows : $trip->$relation->toArray()))
+            @if($collection==='costs' && empty($rows)) @php($rows = [[]]) @endif
+            @foreach($rows as $row)
                 @include('trips.row',['collection'=>$collection,'row'=>$row,'index'=>$loop->index])
             @endforeach
         </div>
@@ -67,7 +69,7 @@
         </div>
         <template id="trip-disbursement-template">@include('trips.disbursement-row',['release'=>[],'index'=>'__INDEX__'])</template>
     </x-card>
-    <div class="form-actions"><button class="button button-primary" type="submit">Save Trip</button>@if(auth()->user()->hasPermission('trips.dispatch'))<button class="button button-primary trip-action trip-action-dispatch" type="submit" name="intent" value="dispatch">Save &amp; Dispatch Truck</button>@endif</div>
+    <div class="form-actions"><button class="button button-primary" type="submit">Save</button></div>
 </form>
 @endif
 <div class="trip-preview"><p class="trip-preview-label">Saved trip document</p>@include('trips.document')</div>

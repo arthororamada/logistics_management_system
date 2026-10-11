@@ -80,10 +80,10 @@ class TripsManagementTest extends TestCase
         $this->get(route('trips.print', $trip))->assertOk()->assertSee('TEST-VAN')->assertDontSee('Primary navigation')->assertDontSee('Financial summary');
     }
 
-    public function test_dispatch_saves_pending_changes_and_completion_is_recorded_once(): void
+    public function test_separate_save_and_dispatch_and_completion_are_recorded_once(): void
     {
         $trip = $this->draft();
-        $this->postJson(route('trips.dispatch', $trip), $this->payload() + ['reason' => 'Ready'])->assertOk();
+        $this->saveAndDispatch($trip, $this->payload() + ['reason' => 'Ready'])->assertOk();
         $this->assertEquals('Dispatched', $trip->fresh()->current_status);
         $this->assertDatabaseHas('trip_status', ['trip_id' => $trip->trip_id, 'status' => 'Dispatched', 'reason' => 'Ready', 'created_by' => $this->admin->id]);
         $this->get(route('trips.show', $trip))->assertOk()->assertSee('trip-readonly')->assertDontSee('id="trip-form"', false)->assertSee('Print Trip');
@@ -105,7 +105,7 @@ class TripsManagementTest extends TestCase
     public function test_reopened_trip_can_be_dispatched_again_without_losing_history(): void
     {
         $trip = $this->draft();
-        $this->postJson(route('trips.dispatch', $trip), $this->payload() + ['reason' => 'First dispatch'])->assertOk();
+        $this->saveAndDispatch($trip, $this->payload() + ['reason' => 'First dispatch'])->assertOk();
         $this->putJson(route('trip-status-updaters.update'), ['trip_id' => $trip->trip_id, 'version' => $trip->fresh()->version, 'new_status' => 'Open', 'reason' => 'Reschedule'])->assertOk();
         $this->postJson(route('trips.dispatch', $trip), ['reason' => 'Second dispatch'])->assertOk();
         $this->assertEquals('Dispatched', $trip->fresh()->current_status);
@@ -119,7 +119,7 @@ class TripsManagementTest extends TestCase
         $directory()->assertOk()->assertSee('trip-status-open')->assertSee('trip-action-edit')
             ->assertSee('trip-action-dispatch')->assertSee('data-trip-operation="dispatch"', false)
             ->assertDontSee('trip-action-complete')->assertDontSee('trip-action-print');
-        $this->postJson(route('trips.dispatch', $trip), $this->payload())->assertOk();
+        $this->saveAndDispatch($trip, $this->payload())->assertOk();
         $directory()->assertOk()->assertSee('trip-status-dispatched')->assertSee('trip-action-view')
             ->assertSee('trip-action-complete')->assertSee('trip-action-print')
             ->assertSee('data-trip-operation="complete"', false)->assertDontSee('trip-action-dispatch');
@@ -131,12 +131,12 @@ class TripsManagementTest extends TestCase
         $this->get(route('trips.print', $trip))->assertOk()->assertSee('trip-status-completed')->assertSee('trip-action-print');
     }
 
-    public function test_invalid_dispatch_rolls_back_pending_changes_and_open_cannot_complete(): void
+    public function test_invalid_save_leaves_draft_unchanged_and_open_cannot_complete(): void
     {
         $trip = $this->draft();
         $payload = $this->payload();
         $payload['personnels'] = [];
-        $this->postJson(route('trips.dispatch', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels');
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels');
         $this->assertNull($trip->fresh()->vehicle_id);
         $this->assertEquals(0, $trip->segments()->count());
         $this->assertEquals(1, $trip->history()->count());
@@ -214,7 +214,7 @@ class TripsManagementTest extends TestCase
     {
         $trip = $this->draft();
         $payload = $this->payload();
-        $this->postJson(route('trips.dispatch', $trip), $payload)->assertOk();
+        $this->saveAndDispatch($trip, $payload)->assertOk();
         TripRate::find($payload['tariff_id'])->update(['client_code' => 'CHANGED CLIENT']);
         Personnel::find($payload['personnels'][0]['employee_id'])->update(['first_name' => 'CHANGED NAME']);
         FuelSupplier::find($payload['fuel_purchases'][0]['fuel_supplier'])->update(['fuel_supplier_name' => 'CHANGED SUPPLIER']);
@@ -309,6 +309,10 @@ class TripsManagementTest extends TestCase
         $this->assertEquals(1100, $trip->personnels()->first()->non_cash_released);
         $payload['version'] = $trip->fresh()->version;
         $payload['personnels'][0]['id'] = $trip->personnels()->first()->id;
+        $driver = Personnel::findOrFail($payload['personnels'][0]['employee_id'])->replicate();
+        $driver->employee_id = 'DRIVER-'.Str::random(8);
+        $driver->save();
+        $payload['personnels'][] = ['employee_id' => $driver->id, 'designation' => 'Driver'];
         $payload['personnels'][0]['designation'] = 'Helper';
         $this->putJson(route('trips.update', $trip), $payload)->assertOk();
         $this->assertEquals(550, $trip->personnels()->first()->salary);
@@ -345,6 +349,10 @@ class TripsManagementTest extends TestCase
         $this->assertEquals(900, $trip->personnels()->first()->non_cash_released);
         $this->assertEquals('09123456789', $trip->fresh()->gcash_number);
         $payload['version'] = $trip->fresh()->version;
+        $driver = Personnel::findOrFail($payload['personnels'][0]['employee_id'])->replicate();
+        $driver->employee_id = 'DRIVER-'.Str::random(8);
+        $driver->save();
+        $payload['personnels'][] = ['employee_id' => $driver->id, 'designation' => 'Driver'];
         $payload['personnels'][0]['designation'] = 'Helper';
         unset($payload['disbursements']);
         $this->putJson(route('trips.update', $trip), $payload)->assertOk();
@@ -360,7 +368,7 @@ class TripsManagementTest extends TestCase
         $this->assertEquals(550, $trip->personnels()->first()->salary);
         $payload['personnels'] = [];
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels');
-        $this->assertEquals(1, $trip->personnels()->count());
+        $this->assertEquals(2, $trip->personnels()->count());
     }
 
     public function test_disbursements_cannot_bypass_personnel_or_exceed_salary(): void
@@ -374,7 +382,7 @@ class TripsManagementTest extends TestCase
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('disbursements');
         $payload['personnels'] = [];
         $payload['disbursements'][0]['cash_released'] = 100;
-        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('disbursements');
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels');
         $this->assertEquals(0, $trip->personnels()->count());
         $this->assertEquals(0, $trip->fresh()->version);
     }
@@ -421,7 +429,7 @@ class TripsManagementTest extends TestCase
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels.0.designation');
         $employee->update(['position' => 'DRIVER']);
         $payload['personnels'][0]['designation'] = 'DRIVER';
-        $this->postJson(route('trips.dispatch', $trip), $payload)->assertOk();
+        $this->saveAndDispatch($trip, $payload)->assertOk();
         $this->assertEquals(1100, $trip->personnels()->first()->salary);
         $this->assertEquals(1100, $trip->personnels()->first()->non_cash_released);
         $this->assertDatabaseHas('trip_status', ['trip_id' => $trip->trip_id, 'status' => 'Dispatched', 'reason' => null]);
@@ -594,8 +602,8 @@ class TripsManagementTest extends TestCase
         $this->assertEquals(0, $trip->fresh()->fuel_price);
         $payload['version'] = $trip->fresh()->version;
         $payload['costs'] = [];
-        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
-        $this->assertEquals(0, $trip->costs()->count());
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs');
+        $this->assertEquals(1, $trip->costs()->count());
     }
 
     public function test_unified_costs_preserve_legacy_fuel_without_an_active_fuel_code(): void
@@ -668,7 +676,7 @@ class TripsManagementTest extends TestCase
         $supplier = $payload['fuel_purchases'][0]['fuel_supplier'];
         $payload['fuel_purchases'] = [];
         $payload['costs'] = [['cost_code' => $this->costCode('FUEL_PURCHASE')->id, 'fuel_supplier' => $supplier, 'liters_required' => 10, 'price_per_liter' => 60, 'cost_amount' => 1, 'remarks' => 'Dispatch fuel']];
-        $this->postJson(route('trips.dispatch', $trip), $payload)->assertOk();
+        $this->saveAndDispatch($trip, $payload)->assertOk();
         $this->assertEquals('Dispatched', $trip->fresh()->current_status);
         $this->assertEquals(600, $trip->fresh()->fuel_price);
         $this->assertEquals(1700, $trip->fresh()->total_cost);
@@ -787,7 +795,7 @@ class TripsManagementTest extends TestCase
         foreach (['Available', 'Maintenance', 'Inactive'] as $status) {
             Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => $status]);
             $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
-            $this->postJson(route('trips.dispatch', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
+            $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
         }
         Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Running']);
         $helper = Personnel::where('employee_id', 'like', 'HELP-%')->latest('id')->firstOrFail();
@@ -852,13 +860,223 @@ class TripsManagementTest extends TestCase
             $first = $this->draft();
             $second = $this->draft();
             $payload = $this->payload();
-            $this->postJson(route('trips.dispatch', $first), $payload)->assertOk();
+            $this->saveAndDispatch($first, $payload)->assertOk();
             $this->putJson(route('trip-status-updaters.update'), ['trip_id' => $first->trip_id, 'version' => $first->fresh()->version, 'new_status' => $status, 'reason' => 'Release resources'])->assertOk();
             Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Maintenance']);
             $this->putJson(route('trips.update', $second), $payload)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
             Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Running']);
-            $this->postJson(route('trips.dispatch', $second), $payload)->assertOk();
+            $this->saveAndDispatch($second, $payload)->assertOk();
         }
+    }
+
+    public function test_empty_saved_draft_dispatch_returns_each_missing_section_once(): void
+    {
+        $trip = $this->draft();
+        $response = $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable();
+        $sections = $response->json('sections');
+        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'costs'], array_keys($sections));
+        $this->assertEquals(count($sections), count(array_unique($sections)));
+        $this->assertEquals(implode("\n", $sections), $response->json('message'));
+        $this->assertStringNotContainsString('Required before dispatch.', $response->getContent());
+        $this->assertEquals('Additional Trip Cost is required.', $sections['costs']);
+        $this->assertEquals('Open', $trip->fresh()->current_status);
+    }
+
+    public function test_incomplete_save_collects_all_sections_and_rolls_back(): void
+    {
+        $trip = $this->draft();
+        $response = $this->putJson(route('trips.update', $trip), [
+            'version' => 0, 'drops_number' => 0, 'personnels' => [], 'segments' => [], 'costs' => [[]],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['trip_no', 'trip_type', 'payment_type', 'tariff_id', 'vehicle_id', 'segments', 'personnels', 'costs.0.cost_code', 'costs.0.cost_amount']);
+        $sections = $response->json('sections');
+        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'costs'], array_keys($sections));
+        foreach ($sections as $message) {
+            $this->assertEquals(1, substr_count($response->json('message'), $message));
+        }
+        $this->assertEquals(0, $trip->fresh()->version);
+        $this->assertNull($trip->vehicle_id);
+        $this->assertEquals(0, $trip->personnels()->count());
+        $this->assertEquals(1, $trip->history()->count());
+    }
+
+    public function test_invalid_route_and_missing_driver_are_grouped_and_corrections_dispatch_with_costs(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $valid = $payload;
+        $payload['segments'][0]['total_distance'] = 0;
+        $payload['personnels'][0]['designation'] = 'Helper';
+        $payload['personnels'][] = ['employee_id' => null, 'designation' => null];
+        $payload['costs'] = [];
+        $response = $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable();
+        $this->assertEquals(['segments', 'personnels'], array_keys($response->json('sections')));
+        $valid['fuel_purchases'] = [];
+        $this->saveAndDispatch($trip, $valid)->assertOk();
+        $this->assertEquals('Dispatched', $trip->fresh()->current_status);
+        $this->assertEquals(1, $trip->costs()->count());
+    }
+
+    public function test_save_groups_incomplete_conditional_cost_details_with_other_missing_sections(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $fuel = OtherCost::firstOrCreate(['cost_code' => 'FUEL_PURCHASE'], ['cost_name' => 'Fuel', 'is_cash_release' => false, 'is_active' => true]);
+        $roro = OtherCost::firstOrCreate(['cost_code' => 'RORO_COST'], ['cost_name' => 'Shipping', 'is_cash_release' => false, 'is_active' => true]);
+        $fuel->update(['is_active' => true]);
+        $roro->update(['is_active' => true]);
+        $payload['vehicle_id'] = null;
+        $payload['trip_no'] = null;
+        $payload['costs'] = [['cost_code' => $fuel->id], ['cost_code' => $roro->id]];
+        $response = $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()
+            ->assertJsonValidationErrors(['costs.0.fuel_supplier', 'costs.0.liters_required', 'costs.0.price_per_liter', 'costs.1.shipping_line_name', 'costs.1.shipping_rate_id']);
+        $this->assertEquals(['general', 'vehicle', 'costs'], array_keys($response->json('sections')));
+        $this->assertEquals(1, substr_count($response->json('message'), 'Additional Trip Cost is required.'));
+        $this->get(route('trips.show', $trip))->assertOk()->assertSee('novalidate', false)->assertDontSee('Save &amp; Dispatch', false);
+    }
+
+    public function test_incomplete_save_also_reports_resource_eligibility_sections(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $this->saveAndDispatch($trip, $payload)->assertOk();
+        $other = $this->draft();
+        $payload['trip_no'] = null;
+        $payload['segments'] = [];
+        $response = $this->putJson(route('trips.update', $other), $payload)->assertUnprocessable()
+            ->assertJsonValidationErrors(['trip_no', 'segments', 'vehicle_id', 'personnels.0.employee_id']);
+        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels'], array_keys($response->json('sections')));
+        $this->assertEquals('Open', $other->fresh()->current_status);
+    }
+
+    public function test_save_preserves_open_status_and_dispatch_changes_only_saved_trip_status(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $payload['current_status'] = 'Dispatched';
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk()->assertJsonPath('trip.current_status', 'Open');
+        $trip->refresh();
+        $this->assertEquals(1, $trip->version);
+        $this->assertNull($trip->date_completed);
+        $this->assertEquals(['Open'], $trip->history()->pluck('status')->all());
+        $payload['version'] = $trip->version;
+        $payload['trip_no'] = 'SAVED-EDIT';
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk()->assertJsonPath('trip.current_status', 'Open');
+        $trip->refresh();
+        $savedPeople = $trip->personnels()->get()->toArray();
+        $savedCosts = $trip->costs()->get()->toArray();
+        $savedTotals = [$trip->total_distance, $trip->total_cost, $trip->total_released];
+        $version = $trip->version;
+        $this->postJson(route('trips.dispatch', $trip), ['version' => $version, 'reason' => 'Dispatch saved document'])->assertOk()->assertJsonPath('trip.current_status', 'Dispatched');
+        $trip->refresh();
+        $this->assertEquals('SAVED-EDIT', $trip->trip_no);
+        $this->assertEquals($version + 1, $trip->version);
+        $this->assertEquals($savedPeople, $trip->personnels()->get()->toArray());
+        $this->assertEquals($savedCosts, $trip->costs()->get()->toArray());
+        $this->assertEquals($savedTotals, [$trip->total_distance, $trip->total_cost, $trip->total_released]);
+        $this->postJson(route('trips.dispatch', $trip))->assertStatus(409);
+        $this->assertEquals(['Open', 'Dispatched'], $trip->history()->pluck('status')->all());
+    }
+
+    public function test_dispatch_rejects_assignment_payloads_and_stale_versions_without_saving(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $this->postJson(route('trips.dispatch', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors(['vehicle_id', 'personnels', 'segments']);
+        $this->assertNull($trip->fresh()->vehicle_id);
+        $this->assertEquals(0, $trip->version);
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->postJson(route('trips.dispatch', $trip), ['version' => 0])->assertStatus(409);
+        $this->assertEquals('Open', $trip->fresh()->current_status);
+        $this->assertEquals(1, $trip->history()->count());
+        $this->postJson(route('trips.dispatch', $trip), ['version' => $trip->fresh()->version])->assertOk();
+    }
+
+    public function test_save_and_dispatch_buttons_use_separate_forms_and_endpoints(): void
+    {
+        $trip = $this->draft();
+        $response = $this->get(route('trips.show', $trip))->assertOk()->assertDontSee('Save &amp; Dispatch', false);
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $this->assertEquals(1, $xpath->query('//form[@id="trip-form" and @novalidate]/div[@class="form-actions"]/button[normalize-space()="Save"]')->length);
+        $this->assertEquals(0, $xpath->query('//form[@id="trip-form"]//button[@value="dispatch"]')->length);
+        $this->assertEquals(1, $xpath->query('//form[@data-trip-operation="dispatch" and @action="'.route('trips.dispatch', $trip).'"]//button[normalize-space()="Dispatch Truck"]')->length);
+    }
+
+    public function test_first_save_and_updates_require_cost_entries_and_valid_amounts_accepting_zero(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $payload['fuel_purchases'] = [];
+        $payload['costs'] = [['cost_code' => $payload['costs'][0]['cost_code'], 'cost_amount' => 0]];
+        foreach ([0, 1] as $version) {
+            $payload['version'] = $version;
+            foreach (['missing', null, '', []] as $value) {
+                $invalid = $payload;
+                if ($value === 'missing') unset($invalid['costs']);
+                else $invalid['costs'] = $value;
+                $this->putJson(route('trips.update', $trip), $invalid)->assertUnprocessable()->assertJsonValidationErrors('costs')
+                    ->assertJsonPath('sections.costs', 'Additional Trip Cost is required.');
+                $this->assertEquals($version, $trip->fresh()->version);
+            }
+            foreach (['missing', null, '', 'invalid', -1, 1000000, '0.001'] as $amount) {
+                $invalid = $payload;
+                if ($amount === 'missing') unset($invalid['costs'][0]['cost_amount']);
+                else $invalid['costs'][0]['cost_amount'] = $amount;
+                $this->putJson(route('trips.update', $trip), $invalid)->assertUnprocessable()->assertJsonValidationErrors('costs.0.cost_amount')
+                    ->assertJsonPath('sections.costs', 'Additional Trip Cost is required.');
+                $this->assertEquals($version, $trip->fresh()->version);
+                $this->assertEquals($version ? 1 : 0, $trip->costs()->count());
+            }
+            $this->putJson(route('trips.update', $trip), $payload)->assertOk()->assertJsonPath('trip.current_status', 'Open');
+            $cost = $trip->costs()->firstOrFail();
+            $this->assertEquals(0, $cost->released_amount + $cost->nonreleased_amount);
+            $payload['costs'][0]['id'] = $cost->id;
+        }
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0]['cost_amount'] = '15.25';
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(15.25, $trip->costs()->first()->released_amount);
+    }
+
+    public function test_dispatch_requires_saved_costs_and_accepts_a_zero_amount(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $payload['fuel_purchases'] = [];
+        $payload['costs'] = [['cost_code' => $payload['costs'][0]['cost_code'], 'cost_amount' => 0]];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $trip->costs()->delete(); // Simulate a legacy trip saved without any costs.
+        $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable()->assertJsonValidationErrors('costs')
+            ->assertJsonPath('errors.costs.0', 'Additional Trip Cost is required.');
+        $this->assertEquals('Open', $trip->fresh()->current_status);
+        $this->assertEquals(1, $trip->history()->count());
+        $payload['version'] = $trip->fresh()->version;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $cost = $trip->costs()->firstOrFail();
+        $cost->update(['released_amount' => -1]);
+        $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable()->assertJsonValidationErrors('costs.0.cost_amount');
+        $cost->update(['released_amount' => 0]);
+        $this->postJson(route('trips.dispatch', $trip))->assertOk();
+        $this->assertEquals('Dispatched', $trip->fresh()->current_status);
+        $this->assertEquals(0, $trip->costs()->first()->released_amount);
+    }
+
+    public function test_new_trip_form_starts_with_a_blank_required_cost_amount(): void
+    {
+        $response = $this->get(route('trips.show', $this->draft()))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $this->assertEquals(1, $xpath->query('//div[@data-trip-collection="costs"]//input[@name="costs[0][cost_amount]" and @required and @value=""]')->length);
+        $this->assertEquals(1, $xpath->query('//template[@id="trip-template-costs"]//input[contains(@name,"[cost_amount]") and @required and @value=""]')->length);
+    }
+
+    private function saveAndDispatch(Trip $trip, array $payload)
+    {
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+
+        return $this->postJson(route('trips.dispatch', $trip), ['version' => $trip->fresh()->version, 'reason' => $payload['reason'] ?? null]);
     }
 
     private function payload(): array

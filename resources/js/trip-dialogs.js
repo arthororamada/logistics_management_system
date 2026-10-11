@@ -3,8 +3,12 @@ export { withSubmissionLock as withTripSubmissionLock } from './notification-cor
 export async function readTripResponse(response) {
     const result = await response.json().catch(() => null);
     if (!response.ok) {
-        throw new Error(result?.errors ? Object.values(result.errors).flat().join('\n')
+        const messages = result?.sections ? Object.values(result.sections) : Object.values(result?.errors || {}).flat();
+        const error = new Error(messages.length ? [...new Set(messages)].join('\n')
             : (result?.message || `Request failed (${response.status}). Reload and try again.`));
+        error.errors = result?.errors;
+        error.sections = result?.sections;
+        throw error;
     }
     if (!result || typeof result.message !== 'string' || typeof result.redirect !== 'string' || !result.trip?.id) {
         throw new Error('The server did not confirm this operation. Reload the trip to check its saved status before trying again.');
@@ -27,8 +31,8 @@ export function createTripDialogs(notifications) {
         success(message) {
             return notifications.success(message);
         },
-        error(message) {
-            return notifications.error(message, 'Unable to save trip');
+        error(message, action = 'save') {
+            return notifications.error(message, action === 'dispatch' ? 'Unable to dispatch trip' : 'Unable to save trip');
         },
     };
 }

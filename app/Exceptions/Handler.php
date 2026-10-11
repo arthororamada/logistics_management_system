@@ -7,6 +7,20 @@ use Throwable;
 
 class Handler extends ExceptionHandler
 {
+    protected function invalidJson($request, \Illuminate\Validation\ValidationException $exception)
+    {
+        if ($request->routeIs('trips.update', 'trips.dispatch')) {
+            $sections = \App\Services\TripFormValidation::sections($exception->errors());
+
+            return response()->json([
+                'message' => implode("\n", $sections),
+                'sections' => $sections,
+                'errors' => $exception->errors(),
+            ], $exception->status);
+        }
+
+        return parent::invalidJson($request, $exception);
+    }
     /**
      * The list of the inputs that are never flashed to the session on validation exceptions.
      *

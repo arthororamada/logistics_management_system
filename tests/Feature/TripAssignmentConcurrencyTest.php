@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Personnel;
+use App\Models\OtherCost;
 use App\Models\Route;
 use App\Models\Trip;
 use App\Models\TripRate;
@@ -39,6 +40,8 @@ class TripAssignmentConcurrencyTest extends TestCase
             $records[] = $rate;
             $route = Route::create(['province' => 'Test', 'city' => 'Test', 'brgy' => $suffix, 'longitued' => 120, 'latitude' => 14, 'is_active' => true]);
             $records[] = $route;
+            $cost = OtherCost::create(['cost_code' => 'CONCURRENT-'.$suffix, 'cost_name' => 'Concurrent test cost', 'is_cash_release' => false, 'is_active' => true]);
+            $records[] = $cost;
             for ($i = 0; $i < 2; $i++) {
                 $vehicle = $i && $shared !== 'personnel' ? $trips[0]->vehicle_id : null;
                 if (! $vehicle) {
@@ -55,6 +58,7 @@ class TripAssignmentConcurrencyTest extends TestCase
                 $trip = Trip::create(['trip_id' => "CONCURRENT-$suffix-$i", 'creation_key' => (string) Str::uuid(), 'vehicle_id' => $vehicle, 'tariff_id' => $rate->id, 'trip_no' => "CONCURRENT-$suffix-$i", 'trip_type' => 'Test', 'payment_type' => 'Cash', 'trip_route_origin' => 'Origin', 'trip_route_destination' => 'Destination', 'total_distance' => 1, 'current_status' => 'Open', 'created_by' => $userId, 'updated_by' => $userId]);
                 $trips[] = $trip;
                 $trip->personnels()->create(['employee_id' => $employee, 'designation' => 'Driver', 'created_by' => $userId]);
+                $trip->costs()->create(['cost_code' => $cost->id, 'released_amount' => 0, 'nonreleased_amount' => 0, 'created_by' => $userId]);
                 $trip->segments()->create(['origin_id' => $route->id, 'destination_id' => $route->id, 'origin' => 'Origin', 'destination' => 'Destination', 'total_distance' => 1, 'created_by' => $userId]);
             }
             // Both workers start while the shared resource is locked by this connection.

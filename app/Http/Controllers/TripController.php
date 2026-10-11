@@ -124,19 +124,17 @@ class TripController extends Controller
     public function dispatch(Request $request, Trip $trip, TripService $service)
     {
         $this->authorizeTrip($request, $trip);
-        $reason = $request->validate(['reason' => 'nullable|string|max:2000'])['reason'] ?? null;
-        $data = null;
-        if ($request->has('version')) {
-            abort_unless($request->user()->hasPermission('trips.update'), 403);
-            $saveRequest = new SaveTripRequest;
-            $data = $request->validate($saveRequest->rules(), $saveRequest->messages());
+        $rules = ['reason' => 'nullable|string|max:2000', 'version' => 'sometimes|required|integer|min:0'];
+        foreach (['vehicle_id', 'tariff_id', 'trip_no', 'trip_type', 'payment_type', 'drops_number', 'gcash_number', 'personnels', 'segments', 'fuel_purchases', 'costs', 'disbursements'] as $field) {
+            $rules[$field] = 'prohibited';
         }
-        DB::transaction(function () use ($request, $trip, $service, $data, $reason) {
+        $data = $request->validate($rules, ['prohibited' => 'Save trip information before dispatching. Dispatch Truck uses the saved trip only.']);
+        DB::transaction(function () use ($request, $trip, $service, $data) {
             $locked = Trip::whereKey($trip->id)->lockForUpdate()->firstOrFail();
-            if ($data) {
-                $service->save($locked, $data, $request->user()->id);
+            if (isset($data['version'])) {
+                abort_unless((int) $data['version'] === (int) $locked->version, 409, 'This trip changed. Reload before dispatching.');
             }
-            $service->dispatch($locked, $request->user()->id, $reason);
+            $service->dispatch($locked, $request->user()->id, $data['reason'] ?? null);
         }, 3);
 
         return $this->success($request, $trip, 'Truck dispatched. Trip is now read-only.');

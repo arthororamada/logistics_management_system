@@ -4,16 +4,17 @@ import { notifications } from './notifications';
 import { createTripDialogs, withTripSubmissionLock, readTripResponse } from './trip-dialogs';
 import { syncTripCost } from './trip-costs';
 import { applyTripAvailability, readTripAvailability } from './trip-eligibility';
+import { createTripValidation, tripSaveErrors, tripFormPayload, invalidTripFields, tripHasUnsavedChanges } from './trip-validation';
 
 document.addEventListener('DOMContentLoaded', () => {
     const dialogs = createTripDialogs(notifications);
     const errors = document.querySelector('[data-trip-errors]');
-    const report = (message) => {
+    const report = (message, action = 'save') => {
         if (errors) {
             errors.textContent = message;
             errors.hidden = false;
         }
-        return dialogs.error(message);
+        return dialogs.error(message, action);
     };
     const request = async (url, method, data) => {
         const response = await fetch(url, {
@@ -23,10 +24,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         return readTripResponse(response);
     };
+    const editor = document.querySelector('[data-trip-editor]');
+    let validation;
+    let savedEditorPayload;
     document.querySelectorAll('[data-trip-action]').forEach((form) => {
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             await withTripSubmissionLock(form, async () => {
+                if (form.dataset.tripOperation === 'dispatch' && editor && tripHasUnsavedChanges(tripFormPayload(editor), savedEditorPayload)) {
+                    await report('Save your trip changes before dispatching.', 'dispatch'); return;
+                }
                 if (form.hasAttribute('data-confirm') && !await dialogs.confirm(form.dataset.tripOperation)) return;
                 const button = form.querySelector('button');
                 const label = button.textContent;
@@ -37,15 +44,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (form.querySelector('[name="creation_key"]')) window.location.assign(result.redirect);
                     else window.location.reload();
                 } catch (error) {
-                    await report(error.message);
+                    if (validation && error.errors) validation.show(error.errors);
+                    else await report(error.message, form.dataset.tripOperation);
                 } finally {
                     button.textContent = label;
                 }
             });
         });
     });
-    const editor = document.querySelector('[data-trip-editor]');
     if (editor) {
+        validation = createTripValidation(editor, errors);
         const refreshAvailability = async () => {
             const response = await fetch(editor.dataset.availabilityUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store' });
             const availability = await readTripAvailability(response);
@@ -61,7 +69,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return reasons;
         };
         window.addEventListener('focus', () => { refreshAvailability().catch((error) => report(error.message)); });
-        const collections = ['personnels', 'segments', 'fuel_purchases', 'costs', 'disbursements'];
         const rateSelect = editor.querySelector('[data-trip-rate]');
         const releasesContainer = editor.querySelector('[data-trip-disbursements]');
         const savedReleases = new Map(JSON.parse(releasesContainer.dataset.savedReleases).map((release) => [String(release.employee_id), Number(release.cash_released)]));
@@ -119,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (name === 'costs') editor.querySelectorAll('[data-trip-collection="costs"] [data-trip-row]').forEach((row) => syncTripCost(row));
                 enhanceTripSelects(editor);
                 if (name === 'personnels') syncPersonnelSalaries();
+                validation.update(add);
             }
             const remove = event.target.closest('[data-trip-remove]');
             if (remove) {
@@ -127,8 +135,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const employeeId = remove.closest('[data-trip-row]').querySelector('[name$="[employee_id]"]').value;
                     if ((savedReleases.get(employeeId) ?? 0) > 0) { report('Personnel with released funds cannot be removed.'); return; }
                 }
+                const section = remove.closest('[data-trip-section]');
                 remove.closest('[data-trip-row]').remove(); reindex(name);
                 if (name === 'personnels') syncPersonnelSalaries();
+                validation.update(section);
             }
         });
         editor.addEventListener('change', (event) => {
@@ -139,6 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (row?.closest('[data-trip-collection="costs"]')) syncTripCost(row, field.name.match(/\[(\w+)\]$/)?.[1]);
             if (row?.closest('[data-trip-collection="personnels"]')) syncPersonnelSalaries();
             refreshTripSelects(editor);
+            validation.update(field);
         });
         editor.addEventListener('input', (event) => {
             if (event.target.name === 'drops_number') syncPersonnelSalaries();
@@ -151,6 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.querySelector('[data-disbursement-balance]').value = Math.max(0, salary - Number(event.target.value)).toFixed(2);
             }
         });
+        editor.addEventListener('input', (event) => validation.update(event.target));
         const vehicle = editor.querySelector('[data-trip-vehicle]');
         const syncVehicle = () => {
             const data = JSON.parse(vehicle.selectedOptions[0]?.dataset.vehicle || '{}');
@@ -174,32 +186,31 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
         editor.addEventListener('invalid', (event) => expandTripSection(event.target), true);
+        savedEditorPayload = tripFormPayload(editor);
         editor.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const dispatch = event.submitter?.value === 'dispatch';
             await withTripSubmissionLock(editor, async () => {
                 try {
-                    const reasons = await refreshAvailability();
-                    if (reasons.length) { await report([...new Set(reasons)].join(' ')); return; }
-                } catch (error) { await report(error.message); return; }
-                if (dispatch && !await dialogs.confirm('dispatch')) return;
-                const payload = Object.fromEntries(collections.map((name) => [name, []]));
-                for (const [name, value] of new FormData(editor)) {
-                    const match = name.match(/^(personnels|segments|fuel_purchases|costs|disbursements)\[(\d+)\]\[(\w+)\]$/);
-                    if (match) {
-                        payload[match[1]][Number(match[2])] ??= {};
-                        payload[match[1]][Number(match[2])][match[3]] = value === '' ? null : value;
-                    } else if (!['_token', '_method'].includes(name)) payload[name] = value === '' ? null : value;
+                    await refreshAvailability();
+                } catch (error) {
+                    const invalid = tripSaveErrors(tripFormPayload(editor), invalidTripFields(editor));
+                    if (Object.keys(invalid).length) validation.show(invalid);
+                    else await report(error.message);
+                    return;
                 }
+                const invalid = tripSaveErrors(tripFormPayload(editor), invalidTripFields(editor));
+                if (Object.keys(invalid).length) { validation.show(invalid); return; }
+                validation.show({}, false);
                 const button = event.submitter;
                 const label = button?.textContent;
-                if (button) button.textContent = 'Saving…';
+                if (button) button.textContent = 'Saving...';
                 try {
-                    const result = await request(dispatch ? editor.dataset.dispatchUrl : editor.action, dispatch ? 'POST' : 'PUT', payload);
+                    const result = await request(editor.action, 'PUT', tripFormPayload(editor));
                     await dialogs.success(result.message || 'Trip saved successfully.');
                     window.location.assign(result.redirect);
                 } catch (error) {
-                    await report(error.message);
+                    if (error.errors) validation.show(error.errors);
+                    else await report(error.message);
                 } finally {
                     if (button) button.textContent = label;
                 }

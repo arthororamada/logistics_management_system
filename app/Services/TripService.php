@@ -220,18 +220,35 @@ class TripService
     public function dispatch(Trip $trip, int $userId, ?string $reason): void
     {
         abort_unless($trip->current_status === 'Open', 409, 'Only open trips can be dispatched.');
-        app(TripAssignmentEligibility::class)->validate($trip, $trip->vehicle_id, $trip->personnels()->pluck('employee_id')->all());
         $errors = [];
+        try {
+            app(TripAssignmentEligibility::class)->validate($trip, $trip->vehicle_id, $trip->personnels()->pluck('employee_id')->all());
+        } catch (ValidationException $exception) {
+            $errors = $exception->errors();
+        }
         foreach (['vehicle_id', 'trip_no', 'trip_type', 'payment_type', 'trip_route_origin', 'trip_route_destination', 'tariff_id'] as $field) {
             if (! $trip->$field) {
-                $errors[$field] = 'Required before dispatch.';
+                $errors[$field] = TripFormValidation::MESSAGES[TripFormValidation::section($field)];
             }
         }
         if (! $trip->personnels()->whereRaw('LOWER(designation) = ?', ['driver'])->exists()) {
-            $errors['personnels'] = 'Assign a driver before dispatch.';
+            $errors['personnels'] = TripFormValidation::MESSAGES['personnels'];
         }
         if (! $trip->segments()->exists() || $trip->total_distance <= 0) {
-            $errors['segments'] = 'Add a route with a positive distance before dispatch.';
+            $errors['segments'] = TripFormValidation::MESSAGES['segments'];
+        }
+        if (! $trip->costs()->exists() && ! $trip->fuelPurchases()->exists()) {
+            $errors['costs'] = TripFormValidation::MESSAGES['costs'];
+        }
+        foreach ($trip->costs()->get() as $index => $cost) {
+            if ($cost->released_amount < 0 || $cost->nonreleased_amount < 0 || $cost->released_amount + $cost->nonreleased_amount > 999999.99) {
+                $errors["costs.$index.cost_amount"] = 'Additional Trip Cost must be between 0 and 999999.99.';
+            }
+        }
+        foreach ($trip->fuelPurchases()->get() as $index => $fuel) {
+            if ($fuel->fuel_price < 0 || $fuel->fuel_price > 999999.99) {
+                $errors["fuel_purchases.$index.fuel_price"] = 'Additional Trip Cost must be between 0 and 999999.99.';
+            }
         }
         foreach (['personnels' => ['employee_id', 'personnel'], 'fuelPurchases' => ['fuel_supplier', 'fuel_suppliers'], 'costs' => ['cost_code', 'other_costs']] as $relation => [$field, $table]) {
             $ids = $trip->$relation()->pluck($field)->unique();
