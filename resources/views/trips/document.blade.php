@@ -1,0 +1,26 @@
+<article class="trip-document" aria-label="Trip ticket">
+<header class="ticket-header">@if(is_file(public_path('storage/images/fleet/acc-v.png')))<img src="{{ asset('storage/images/fleet/acc-v.png') }}" alt="Company logo">@endif<div><h2>{{ config('app.name') }}</h2><h1>TRIP TICKET</h1><p>{{ $trip->trip_id }} · {{ $trip->trip_no ?: 'Draft' }}</p></div><div class="ticket-status"><strong class="status-badge trip-status trip-status-{{ strtolower($trip->current_status) }}">{{ $trip->current_status }}</strong><p>Created {{ $trip->created_at->format('M d, Y H:i') }}</p>@if($trip->date_completed)<p>Completed {{ $trip->date_completed->format('M d, Y H:i') }}</p>@endif</div></header>
+<section class="ticket-section"><h3>Trip &amp; vehicle information</h3><dl class="ticket-grid">
+@foreach(['trip_type'=>'Trip type','payment_type'=>'Payment type','trip_route_origin'=>'Origin','trip_route_destination'=>'Destination','trip_route_city'=>'Route city','drops_number'=>'Delivery drops','van_number'=>'Van number','vehicle_group'=>'Vehicle group','plate_number'=>'Plate number','fuel_type'=>'Fuel type','fuel_capacity'=>'Fuel capacity (L)','fuel_usage'=>'Fuel usage (L/km)','cargo_capacity'=>'Cargo capacity','engine_number'=>'Engine number','chassis_no'=>'Chassis number','total_liters_required'=>'Estimated fuel required (L)'] as $field=>$label)<div><dt>{{ $label }}</dt><dd>{{ $trip->$field ?? '—' }}</dd></div>@endforeach
+@if($selectedTripRate)<div><dt>Trip Rate / client</dt><dd>#{{ $selectedTripRate->id }} · {{ $selectedTripRate->trip_number }} · {{ $selectedTripRate->client_code }}</dd></div><div><dt>Trip Rate route</dt><dd>{{ $selectedTripRate->route_origin }} → {{ $selectedTripRate->farthest_destination }}</dd></div>@endif
+</dl></section>
+<section class="ticket-section"><h3>Assigned personnel</h3><table><thead><tr><th>Employee</th><th>Designation</th><th>Salary</th></tr></thead><tbody>@forelse($trip->personnels as $p)<tr><td>{{ $p->employee_name ?: ($employees->get($p->employee_id)?->first_name.' '.$employees->get($p->employee_id)?->last_name) }}</td><td>{{ $p->designation }}</td><td>{{ number_format($p->salary,2) }}</td></tr>@empty<tr><td colspan="3">No personnel assigned.</td></tr>@endforelse</tbody></table></section>
+<section class="ticket-section"><h3>Route segments</h3><table><thead><tr><th>Origin / reference</th><th>Destination / reference</th><th>Distance (km)</th></tr></thead><tbody>@forelse($trip->segments as $r)<tr><td>{{ $r->origin }} / #{{ $r->origin_id }}</td><td>{{ $r->destination }} / #{{ $r->destination_id }}</td><td>{{ number_format($r->total_distance,2) }}</td></tr>@empty<tr><td colspan="3">No route segments.</td></tr>@endforelse</tbody><tfoot><tr><th colspan="2">Total distance</th><th>{{ number_format($trip->total_distance,2) }} km</th></tr></tfoot></table></section>
+<section class="ticket-section"><h3>Additional trip costs</h3><table><thead><tr><th>Cost</th><th>Cost Remark</th><th>Cost Amount</th></tr></thead><tbody>
+@foreach($trip->fuelPurchases as $f)<tr><td>FUEL_PURCHASE &middot; {{ $f->supplier_name ?: $suppliers->get($f->fuel_supplier)?->fuel_supplier_name }}<br>{{ number_format($f->liters_required,2) }} L × {{ number_format($f->price_per_liter,2) }}</td><td>{{ $f->remarks }}</td><td>{{ number_format($f->fuel_price,2) }}</td></tr>@endforeach
+@foreach($trip->costs as $c)<tr><td>{{ $c->cost_name ?: $costCodes->get($c->cost_code)?->cost_name }}@if($c->shipping_rate_id)<br>{{ $c->shipping_description }}@endif @if($c->liters_required!==null)<br>{{ number_format($c->liters_required,2) }} L × {{ number_format($c->price_per_liter,2) }}@endif</td><td>{{ $c->remarks }}</td><td>{{ number_format($c->released_amount+$c->nonreleased_amount,2) }}</td></tr>@endforeach
+@if($trip->fuelPurchases->isEmpty() && $trip->costs->isEmpty())<tr><td colspan="3">No additional costs.</td></tr>@endif
+</tbody></table></section>
+<section class="ticket-section"><h3>Disbursement Information</h3>
+<p>GCash number: {{ $trip->gcash_number ?: 'Not provided' }}</p>
+<table><thead><tr><th>Employee</th><th>Cash / GCash released</th><th>Non-released amount</th></tr></thead><tbody>
+@forelse($trip->personnels as $p)<tr><td>{{ $p->employee_name }}</td><td>{{ number_format($p->cash_released,2) }}</td><td>{{ number_format($p->non_cash_released,2) }}</td></tr>@empty<tr><td colspan="3">No personnel disbursements.</td></tr>@endforelse
+</tbody></table>
+@if($trip->approved_by)<p>Approved by {{ $users->get($trip->approved_by)?->name }} &middot; {{ $trip->approved_at?->format('M d, Y H:i') }}</p>@endif
+</section>
+<footer class="ticket-signatures"><div>Driver signature / date</div><div>Dispatcher signature / date</div><div>Authorized personnel / date</div></footer>
+<section class="ticket-summary" data-trip-financial-summary>
+<h3>Trip Financial Summary</h3>
+<dl class="ticket-grid">@foreach($financialSummary as $label=>$amount)<div><dt>{{ $label }}</dt><dd>PHP {{ number_format($amount,2) }}</dd></div>@endforeach</dl>
+</section>
+</article>

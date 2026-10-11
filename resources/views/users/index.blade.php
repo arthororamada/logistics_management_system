@@ -33,7 +33,7 @@
                             <td><span class="date-label">{{ $user->created_at?->format('M d, Y') }}</span></td>
                             <td class="align-right"><div class="row-actions">
                                 @if(auth()->user()->hasPermission('users.update'))<a href="{{ route('users.edit', $user) }}" class="table-action">Edit</a>@endif
-                                @if(auth()->id() !== $user->id && auth()->user()->hasPermission('users.delete'))<form method="POST" action="{{ route('users.destroy', $user) }}" onsubmit="return confirm('Delete this user account? This action cannot be undone.')">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif
+                                @if(auth()->id() !== $user->id && auth()->user()->hasPermission('users.delete'))<form method="POST" action="{{ route('users.destroy', $user) }}" data-confirm="Delete this user account? This action cannot be undone." data-confirm-title="Delete record?" data-confirm-button="Delete">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif
                             </div></td>
                         </tr>
                     @empty

@@ -3,12 +3,17 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "test": "node --test tests/js/*.test.js",
         "dev": "vite",
-        "build": "vite build"
+        "build": "vite build",
+        "test:trips": "node --test tests/js/trip-calculations.test.js"
     },
     "devDependencies": {
         "axios": "^1.6.4",
         "laravel-vite-plugin": "^1.0.0",
         "vite": "^5.0.0"
+    },
+    "dependencies": {
+        "sweetalert2": "^11.26.25"
     }
 }

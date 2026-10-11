@@ -14,9 +14,10 @@ class FuelSupplierManagementTest extends TestCase
     public function test_administrator_can_view_and_create_fuel_suppliers(): void
     {
         $this->actingAs($this->administrator())->get(route('fuel-suppliers.index'))->assertOk()->assertSee('Fuel Supplier Directory');
-        $response = $this->actingAs($this->administrator())->post(route('fuel-suppliers.store'), ['fuel_supplier_name' => 'Shell', 'price_per_liter' => '65.50', 'is_active' => '1']);
+        $name = 'Test Supplier '.str()->random(12);
+        $response = $this->actingAs($this->administrator())->post(route('fuel-suppliers.store'), ['fuel_supplier_name' => $name, 'price_per_liter' => '65.50', 'is_active' => '1']);
         $response->assertRedirect(route('fuel-suppliers.index'));
-        $this->assertDatabaseHas('fuel_suppliers', ['fuel_supplier_name' => 'Shell', 'price_per_liter' => '65.50', 'is_active' => true]);
+        $this->assertDatabaseHas('fuel_suppliers', ['fuel_supplier_name' => $name, 'price_per_liter' => '65.50', 'is_active' => true]);
     }
 
     public function test_price_per_liter_cannot_be_negative(): void
@@ -33,5 +34,8 @@ class FuelSupplierManagementTest extends TestCase
         $this->assertDatabaseMissing('fuel_suppliers', ['id' => $supplier->id]);
     }
 
-    private function administrator(): User { return User::where('username', 'admin')->firstOrFail(); }
+    private function administrator(): User
+    {
+        return User::where('username', 'admin')->firstOrFail();
+    }
 }

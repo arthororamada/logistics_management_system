@@ -20,12 +20,7 @@
             <x-breadcrumb :items="$breadcrumbs ?? [['label' => 'Home'], ['label' => trim($__env->yieldContent('title', 'Dashboard'))]]" />
 
             <main class="page-content" id="main-content">
-                @if(session('success'))
-                    <div class="alert alert-success" role="status">{{ session('success') }}</div>
-                @endif
-                @if(session('error'))
-                    <div class="alert alert-error" role="alert">{{ session('error') }}</div>
-                @endif
+                <x-notifications />
                 @yield('content')
             </main>
         </div>

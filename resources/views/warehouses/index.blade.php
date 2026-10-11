@@ -31,7 +31,7 @@
                             <td><x-status-badge :status="$warehouse->is_active ? 'active' : 'inactive'" /></td>
                             <td class="align-right"><div class="row-actions">
                                 @if(auth()->user()->hasPermission('warehouses.update'))<a href="{{ route('warehouses.edit', $warehouse) }}" class="table-action">Edit</a>@endif
-                                @if(auth()->user()->hasPermission('warehouses.delete'))<form method="POST" action="{{ route('warehouses.destroy', $warehouse) }}" onsubmit="return confirm('Delete this warehouse? This action cannot be undone.')">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif
+                                @if(auth()->user()->hasPermission('warehouses.delete'))<form method="POST" action="{{ route('warehouses.destroy', $warehouse) }}" data-confirm="Delete this warehouse? This action cannot be undone." data-confirm-title="Delete record?" data-confirm-button="Delete">@csrf @method('DELETE')<button type="submit" class="table-action table-action-danger">Delete</button></form>@endif
                             </div></td>
                         </tr>
                     @empty
