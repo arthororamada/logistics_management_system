@@ -48,8 +48,8 @@
     <div class="sidebar-brand">
         <img
             class="fleet-logo"
-            src="{{ asset('storage/images/fleet/acc-v.png') }}"
-            alt="Fleet management logo"
+            src="{{ asset('images/branding/sidebar-logo.png') }}"
+            alt="Logistics Management System logo"
         >
         <button class="sidebar-close" type="button" data-sidebar-close aria-label="Close navigation"><x-icon name="close" /></button>
     </div>

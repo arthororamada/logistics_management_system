@@ -6,13 +6,15 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Sign In &middot; Fleet Management System</title>
     <meta name="description" content="Secure sign in for the fleet management system">
+    <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/branding/lms-logo.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="auth-body">
     <main class="auth-page">
         <section class="auth-identity" aria-label="Fleet management system">
             <div class="auth-identity-content">
-                <img src="{{ asset('storage/images/fleet/acc-v.png') }}" alt="Logistics logo" class="auth-logo">
+                <img src="{{ asset('images/branding/lms-logo.png') }}" alt="Logistics Management System logo" class="auth-logo">
                 <div class="auth-identity-copy">
                     <p class="auth-eyebrow">Administration portal</p>
                     <h1>E-Fleet Management System</h1>
@@ -29,7 +31,7 @@
 
         <section class="auth-form-panel">
             <div class="auth-form-wrap">
-                <div class="auth-mobile-logo"><img src="{{ asset('storage/images/fleet/acc-v.png') }}" alt="Fleet management logo"></div>
+                <div class="auth-mobile-logo"><img src="{{ asset('images/branding/lms-logo.png') }}" alt="Logistics Management System logo"></div>
                 <header class="auth-form-header">
                     <p class="auth-eyebrow">Welcome back</p>
                     <h2>Sign in to your account</h2>
