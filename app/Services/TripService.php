@@ -265,6 +265,21 @@ class TripService
         $this->transition($trip, 'Completed', $userId, $reason);
     }
 
+    public function updateStatus(Trip $trip, string $status, string $reason, int $version, int $userId): void
+    {
+        abort_unless($version === (int) $trip->version, 409, 'This trip changed. Search for the trip again before updating its status.');
+        if (! in_array($status, ['Open', 'Cancelled']) || trim($reason) === '') {
+            throw ValidationException::withMessages(['new_status' => 'Select Open or Cancelled and provide a reason.']);
+        }
+        if ($trip->current_status === $status) {
+            throw ValidationException::withMessages(['new_status' => 'Select a status different from the current status.']);
+        }
+        if ($status === 'Open') {
+            $trip->date_completed = null;
+        }
+        $this->transition($trip, $status, $userId, trim($reason));
+    }
+
     private function transition(Trip $trip, string $status, int $userId, ?string $reason): void
     {
         $trip->current_status = $status;

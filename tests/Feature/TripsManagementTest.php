@@ -102,6 +102,16 @@ class TripsManagementTest extends TestCase
         $this->get(route('trips.print', $trip))->assertOk()->assertSee('Completed');
     }
 
+    public function test_reopened_trip_can_be_dispatched_again_without_losing_history(): void
+    {
+        $trip = $this->draft();
+        $this->postJson(route('trips.dispatch', $trip), $this->payload() + ['reason' => 'First dispatch'])->assertOk();
+        $this->putJson(route('trip-status-updaters.update'), ['trip_id' => $trip->trip_id, 'version' => $trip->fresh()->version, 'new_status' => 'Open', 'reason' => 'Reschedule'])->assertOk();
+        $this->postJson(route('trips.dispatch', $trip), ['reason' => 'Second dispatch'])->assertOk();
+        $this->assertEquals('Dispatched', $trip->fresh()->current_status);
+        $this->assertEquals(['First dispatch', 'Second dispatch'], $trip->history()->where('status', 'Dispatched')->pluck('reason')->all());
+    }
+
     public function test_trip_badges_and_actions_follow_the_saved_status(): void
     {
         $trip = $this->draft();

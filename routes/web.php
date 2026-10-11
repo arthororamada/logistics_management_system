@@ -13,6 +13,7 @@ use App\Http\Controllers\ShippingLineController;
 use App\Http\Controllers\ShippingRateController;
 use App\Http\Controllers\TripPaymentController;
 use App\Http\Controllers\TripRateController;
+use App\Http\Controllers\TripStatusUpdaterController;
 use App\Http\Controllers\TripTypeController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VehicleController;
@@ -61,6 +62,9 @@ Route::get('/template', function () {
 })->middleware(['auth', 'permission:template.view'])->name('template');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/trip-status-updaters', [TripStatusUpdaterController::class, 'index'])->middleware('permission:trip-status-updaters.view')->name('trip-status-updaters.index');
+    Route::get('/trip-status-updaters/search', [TripStatusUpdaterController::class, 'search'])->middleware('permission:trip-status-updaters.view')->name('trip-status-updaters.search');
+    Route::put('/trip-status-updaters', [TripStatusUpdaterController::class, 'update'])->middleware(['permission:trip-status-updaters.view', 'permission:trip-status-updaters.update'])->name('trip-status-updaters.update');
     Route::get('/trips', [\App\Http\Controllers\TripController::class, 'index'])->middleware('permission:trips.view')->name('trips.index');
     Route::post('/trips', [\App\Http\Controllers\TripController::class, 'store'])->middleware(['permission:trips.create', 'permission:trips.view'])->name('trips.store');
     Route::get('/trips/{trip}', [\App\Http\Controllers\TripController::class, 'show'])->middleware('permission:trips.view')->name('trips.show');

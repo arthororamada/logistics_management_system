@@ -8,6 +8,7 @@
             ['label' => 'Maintenance', 'icon' => 'maintenance'],
         ],
         'Trip Maintenance' => [
+            ['label' => 'Trip Status Updater', 'icon' => 'trips', 'route' => 'trip-status-updaters.index', 'permission' => 'trip-status-updaters.view'],
             ['label' => 'Clients', 'icon' => 'user', 'route' => 'clients.index', 'permission' => 'clients.view'],
             ['label' => 'Routes', 'icon' => 'trips', 'route' => 'routes.index', 'permission' => 'routes.view'],
             ['label' => 'Trip Types', 'icon' => 'trips', 'route' => 'trip-types.index', 'permission' => 'trip-types.view'],

@@ -1,6 +1,7 @@
 import './bootstrap';
 import { installNotifications } from './notifications';
 import './trips';
+import './trip-status-updater';
 
 document.addEventListener('DOMContentLoaded', () => {
     installNotifications();
