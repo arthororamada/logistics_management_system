@@ -17,7 +17,7 @@
     </div>
 </section>
 <div class="alert alert-error" data-trip-errors hidden role="alert" tabindex="-1"></div>
-@if($errors->any())<div class="alert alert-error" role="alert">@foreach($errors->all() as $error)<div>{{ $error }}</div>@endforeach</div>@endif
+@if($errors->any())<div class="alert alert-error trip-validation-errors" role="alert">@foreach($errors->all() as $error)<div>{{ $error }}</div>@endforeach</div>@endif
 <div class="trip-workspace {{ $trip->current_status==='Open' && auth()->user()->hasPermission('trips.update') ? '' : 'trip-readonly' }}">
 @if($trip->current_status==='Open' && auth()->user()->hasPermission('trips.update'))
 <form method="POST" action="{{ route('trips.update',$trip) }}" id="trip-form" novalidate data-trip-editor data-availability-url="{{ route('trips.availability',$trip) }}">
