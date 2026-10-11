@@ -28,6 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const cell = row.insertCell();
         cell.colSpan = 5; cell.className = 'empty-table'; cell.textContent = text;
     };
+    const statusBadge = (status) => {
+        const badge = document.createElement('span');
+        badge.className = `status-badge trip-status trip-status-${status.toLowerCase()}`;
+        badge.textContent = status;
+        return badge;
+    };
     const render = (trip) => {
         selected = trip;
         table.replaceChildren();
@@ -40,13 +46,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (busy) return;
                 update.reset();
                 update.querySelector('[data-status-trip-id]').value = selected.trip_id;
-                update.querySelector('[data-status-current]').value = selected.current_status;
+                update.querySelector('[data-status-current]').replaceChildren(statusBadge(selected.current_status));
                 editor.hidden = false;
                 update.querySelector('[name="new_status"]').focus();
             });
             action.append(button);
         } else action.textContent = '—';
-        for (const value of [trip.trip_id, trip.created_at, trip.van_number || '—', trip.current_status]) row.insertCell().textContent = value;
+        for (const value of [trip.trip_id, trip.created_at, trip.van_number || '—']) row.insertCell().textContent = value;
+        row.insertCell().append(statusBadge(trip.current_status));
     };
     search.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -79,11 +86,16 @@ document.addEventListener('DOMContentLoaded', () => {
         busy = true;
         const searchButton = search.querySelector('button');
         searchButton.disabled = true;
-        showMessage('Updating trip status…');
         await withSubmissionLock(update, async () => {
             const button = update.querySelector('[type="submit"]');
-            button.textContent = 'Updating…';
             try {
+                if (!await notifications.confirm(`Update trip ${payload.trip_id} from ${selected.current_status} to ${payload.new_status}?`, {
+                    title: 'Update Trip Status?',
+                    confirmButtonText: 'Update',
+                    confirmButtonColor: '#1d4ed8',
+                })) return;
+                showMessage('Updating trip status…');
+                button.textContent = 'Updating…';
                 const result = await readStatusResponse(await fetch(update.action, {
                     method: 'PUT', credentials: 'same-origin',
                     headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },

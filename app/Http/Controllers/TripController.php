@@ -74,6 +74,7 @@ class TripController extends Controller
     public function show(Request $request, Trip $trip)
     {
         $this->authorizeTrip($request, $trip);
+        abort_if($trip->current_status === 'Cancelled', 403, 'Cancelled trips cannot be viewed.');
         $data = $this->documentData($trip) + [
             'assignmentAvailability' => app(TripAssignmentEligibility::class)->availability($trip),
             'vehicles' => Vehicle::orderBy('body_number')->get(),

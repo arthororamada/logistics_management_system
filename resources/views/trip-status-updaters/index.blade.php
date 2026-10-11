@@ -21,7 +21,7 @@
                 @csrf @method('PUT')
                 <div class="trip-form-grid">
                     <div class="form-group"><label for="status-trip-id">Trip ID</label><input class="form-input" id="status-trip-id" data-status-trip-id disabled></div>
-                    <div class="form-group"><label for="status-current">Current Status</label><input class="form-input" id="status-current" data-status-current disabled></div>
+                    <div class="form-group"><label for="status-current">Current Status</label><output class="form-input" id="status-current" data-status-current></output></div>
                     <div class="form-group"><label for="status-new">New Status</label><select class="form-select" id="status-new" name="new_status" required><option value="">Select new status</option><option value="Open">Open</option><option value="Cancelled">Cancelled</option></select></div>
                     <div class="form-group"><label for="status-reason">Change Status Reason</label><textarea class="form-input" id="status-reason" name="reason" maxlength="2000" required rows="3"></textarea></div>
                 </div>

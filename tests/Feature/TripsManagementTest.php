@@ -191,6 +191,32 @@ class TripsManagementTest extends TestCase
         $this->get(route('trips.print', $trip))->assertOk()->assertSee('trip-status-completed')->assertSee('trip-action-print');
     }
 
+    public function test_cancelled_trips_hide_details_links_and_reject_direct_access_until_reopened(): void
+    {
+        $trip = $this->draft();
+        $this->putJson(route('trip-status-updaters.update'), [
+            'trip_id' => $trip->trip_id, 'version' => $trip->version,
+            'new_status' => 'Cancelled', 'reason' => 'Cancel delivery',
+        ])->assertOk();
+        $this->get(route('trips.index', ['search' => $trip->trip_id]))->assertOk()
+            ->assertSee($trip->trip_id)->assertSee('trip-status-cancelled')
+            ->assertDontSee(route('trips.show', $trip), false)
+            ->assertDontSee('View Trip')->assertDontSee('Edit Trip');
+        $this->get(route('trips.show', $trip))->assertForbidden();
+        $this->getJson(route('trips.show', $trip))->assertForbidden()
+            ->assertJsonPath('message', 'Cancelled trips cannot be viewed.');
+        $this->get(route('trips.print', $trip))->assertStatus(409);
+
+        $this->putJson(route('trip-status-updaters.update'), [
+            'trip_id' => $trip->trip_id, 'version' => $trip->fresh()->version,
+            'new_status' => 'Open', 'reason' => 'Resume delivery',
+        ])->assertOk();
+        $this->get(route('trips.index', ['search' => $trip->trip_id]))->assertOk()
+            ->assertSee(route('trips.show', $trip), false)->assertSee('Edit Trip');
+        $this->get(route('trips.show', $trip))->assertOk();
+        $this->getJson(route('trips.show', $trip))->assertOk();
+    }
+
     public function test_invalid_save_leaves_draft_unchanged_and_open_cannot_complete(): void
     {
         $trip = $this->draft();
