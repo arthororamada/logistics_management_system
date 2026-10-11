@@ -55,7 +55,7 @@ class TripAssignmentConcurrencyTest extends TestCase
                     $records[] = $record;
                     $employee = $record->id;
                 }
-                $trip = Trip::create(['trip_id' => "CONCURRENT-$suffix-$i", 'creation_key' => (string) Str::uuid(), 'vehicle_id' => $vehicle, 'tariff_id' => $rate->id, 'trip_no' => "CONCURRENT-$suffix-$i", 'trip_type' => 'Test', 'payment_type' => 'Cash', 'trip_route_origin' => 'Origin', 'trip_route_destination' => 'Destination', 'total_distance' => 1, 'current_status' => 'Open', 'created_by' => $userId, 'updated_by' => $userId]);
+                $trip = Trip::create(['trip_id' => "CONCURRENT-$suffix-$i", 'creation_key' => (string) Str::uuid(), 'vehicle_id' => $vehicle, 'tariff_id' => $rate->id, 'trip_no' => '1', 'trip_type' => 'Test', 'payment_type' => 'Cash', 'trip_route_origin' => 'Origin', 'trip_route_destination' => 'Destination', 'total_distance' => 1, 'current_status' => 'Open', 'created_by' => $userId, 'updated_by' => $userId]);
                 $trips[] = $trip;
                 $trip->personnels()->create(['employee_id' => $employee, 'designation' => 'Driver', 'created_by' => $userId]);
                 $trip->costs()->create(['cost_code' => $cost->id, 'released_amount' => 0, 'nonreleased_amount' => 0, 'created_by' => $userId]);

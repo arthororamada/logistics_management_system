@@ -29,6 +29,9 @@ export function tripSaveErrors(payload, invalidFields = {}) {
     for (const field of ['trip_no', 'trip_type', 'payment_type', 'tariff_id', 'vehicle_id']) {
         if (!String(payload[field] ?? '').trim() && !Object.hasOwn(errors, field)) errors[field] = ['Required.'];
     }
+    if (payload.trip_no != null && String(payload.trip_no).trim() !== '' && !['1', '2', '3', '4', '5'].includes(String(payload.trip_no))) {
+        errors.trip_no = ['Please select a trip number from 1 to 5.'];
+    }
     if (!payload.personnels?.some(person => person.designation?.toLowerCase() === 'driver')) errors.personnels = [];
     const distance = payload.segments?.reduce((sum, row) => sum + Number(row.total_distance || 0), 0) || 0;
     if (!payload.segments?.length || !Number.isFinite(distance) || distance <= 0) errors.segments = [];

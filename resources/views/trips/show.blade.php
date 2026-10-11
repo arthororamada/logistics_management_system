@@ -25,9 +25,8 @@
     <x-card title="General Trip Information" data-trip-section="general" :collapsible="true" :collapsed="true" id="trip-section-general">
         <div class="trip-form-grid">
             <div class="form-group"><label>Trip ID</label><input class="form-input" value="{{ $trip->trip_id }}" readonly></div>
-            @foreach(['trip_no'=>'Trip number','drops_number'=>'Number of drops'] as $field=>$label)
-            <div class="form-group"><label for="{{ $field }}">{{ $label }}</label><input class="form-input" id="{{ $field }}" name="{{ $field }}" value="{{ old($field,$trip->$field) }}" @if($field==='drops_number') type="number" min="0" max="10000" required @else maxlength="150" @endif></div>
-            @endforeach
+            <div class="form-group"><label for="trip_no">Trip number</label><select data-trip-searchable class="form-select" id="trip_no" name="trip_no" required><option value="">Select Trip Number</option>@foreach(range(1,5) as $number)<option value="{{ $number }}" @selected((string) old('trip_no',$trip->trip_no)===(string) $number)>{{ $number }}</option>@endforeach</select></div>
+            <div class="form-group"><label for="drops_number">Number of drops</label><input class="form-input" id="drops_number" name="drops_number" value="{{ old('drops_number',$trip->drops_number) }}" type="number" min="0" max="10000" required></div>
             <div class="form-group"><label for="trip_type">Trip type</label><select data-trip-searchable class="form-select" id="trip_type" name="trip_type"><option value="">Select</option>@foreach($tripTypes as $type)<option value="{{ $type->trip_type }}" @selected(old('trip_type',$trip->trip_type)===$type->trip_type)>{{ $type->trip_type }}</option>@endforeach</select></div>
 
         <div class="form-group"><label for="payment_type">Payment Type</label><select data-trip-searchable class="form-select" id="payment_type" name="payment_type"><option value="">Select payment type</option>@foreach($payments as $payment)<option value="{{ $payment->payment_type }}" @selected(old('payment_type',$trip->payment_type)===$payment->payment_type)>{{ $payment->payment_type }}</option>@endforeach</select></div>

@@ -3,13 +3,24 @@ import assert from 'node:assert/strict';
 import { tripSaveErrors, tripErrorSections, tripErrorSection, updateTripSectionErrors, tripHasUnsavedChanges } from '../../resources/js/trip-validation.js';
 import { readTripResponse } from '../../resources/js/trip-dialogs.js';
 
-const complete = () => ({ trip_no: 'T-1', trip_type: 'Delivery', payment_type: 'Cash', tariff_id: 1, vehicle_id: 1, personnels: [{ employee_id: 1, designation: 'Driver' }], segments: [{ origin_id: 1, destination_id: 2, total_distance: 10 }], costs: [{ cost_code: 1, cost_amount: 0 }] });
+const complete = () => ({ trip_no: '1', trip_type: 'Delivery', payment_type: 'Cash', tariff_id: 1, vehicle_id: 1, personnels: [{ employee_id: 1, designation: 'Driver' }], segments: [{ origin_id: 1, destination_id: 2, total_distance: 10 }], costs: [{ cost_code: 1, cost_amount: 0 }] });
+
+test('trip number accepts only dropdown selections and groups failures under general information', () => {
+    for (const trip_no of ['1', '2', '3', '4', '5', 1, 2, 3, 4, 5]) {
+        assert.deepEqual(tripSaveErrors({ ...complete(), trip_no }), {});
+    }
+    for (const trip_no of [undefined, null, '', ' ', 0, 6, -1, '1.5', '01', 'abc']) {
+        const errors = tripSaveErrors({ ...complete(), trip_no });
+        assert.ok(errors.trip_no);
+        assert.deepEqual(Object.keys(tripErrorSections(errors)), ['general']);
+    }
+});
 
 test('dispatch requires saving changed information and allows unchanged saved information', () => {
     const saved = complete();
     const edited = complete();
     assert.equal(tripHasUnsavedChanges(edited, saved), false);
-    edited.trip_no = 'Unsaved trip number';
+    edited.trip_no = '2';
     assert.equal(tripHasUnsavedChanges(edited, saved), true);
     edited.trip_no = saved.trip_no;
     edited.personnels.push({ employee_id: 2, designation: 'Helper' });

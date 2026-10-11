@@ -45,6 +45,66 @@ class TripsManagementTest extends TestCase
         $this->get(route('trips.show', $trip))->assertOk()->assertSee('Saved trip document')->assertSee($trip->trip_id);
     }
 
+    public function test_trip_number_dropdown_saves_each_option_and_restores_the_selection(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $response = $this->get(route('trips.show', $trip))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $options = $xpath->query('//select[@name="trip_no" and @required]/option');
+        $this->assertEquals(['', '1', '2', '3', '4', '5'], array_map(fn ($option) => $option->getAttribute('value'), iterator_to_array($options)));
+        $this->assertEquals('Select Trip Number', $options->item(0)->textContent);
+        $this->assertEquals(0, $xpath->query('//input[@name="trip_no"]')->length);
+        foreach (range(1, 5) as $number) {
+            $payload['trip_no'] = $number % 2 ? (string) $number : $number;
+            $payload['version'] = $trip->fresh()->version;
+            $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+            $this->assertSame((string) $number, $trip->fresh()->trip_no);
+            $this->assertSame('Open', $trip->fresh()->current_status);
+            @$document->loadHTML($this->get(route('trips.show', $trip))->assertOk()->getContent());
+            $xpath = new \DOMXPath($document);
+            $this->assertEquals((string) $number, $xpath->query('//select[@name="trip_no"]/option[@selected]')->item(0)->getAttribute('value'));
+        }
+    }
+
+    public function test_missing_or_invalid_trip_numbers_cannot_save_new_or_existing_trips(): void
+    {
+        $payload = $this->payload();
+        foreach ([false, true] as $saved) {
+            $trip = $this->draft();
+            if ($saved) {
+                $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+            }
+            $payload['version'] = $trip->fresh()->version;
+            $before = $trip->fresh()->trip_no;
+            foreach ([null, '', ' ', 0, 6, -1, '1.5', '01', 'abc', ['1']] as $number) {
+                $invalid = array_replace($payload, ['trip_no' => $number]);
+                $this->putJson(route('trips.update', $trip), $invalid)->assertUnprocessable()
+                    ->assertJsonValidationErrors('trip_no')
+                    ->assertJsonPath('sections.general', 'General Trip Information is required. Please complete all required fields.');
+                $this->assertSame($before, $trip->fresh()->trip_no);
+                $this->assertEquals($payload['version'], $trip->fresh()->version);
+            }
+            $invalid = $payload;
+            unset($invalid['trip_no']);
+            $this->putJson(route('trips.update', $trip), $invalid)->assertUnprocessable()->assertJsonValidationErrors('trip_no');
+            $payload['version'] = 0;
+        }
+    }
+
+    public function test_dispatch_rejects_legacy_trip_numbers_outside_the_dropdown(): void
+    {
+        $trip = $this->draft();
+        $this->putJson(route('trips.update', $trip), $this->payload())->assertOk();
+        $trip->refresh()->update(['trip_no' => 'LEGACY']);
+        $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable()
+            ->assertJsonValidationErrors('trip_no')
+            ->assertJsonPath('errors.trip_no.0', 'Please select a trip number from 1 to 5.');
+        $this->assertSame('Open', $trip->fresh()->current_status);
+    }
+
     public function test_saving_related_rows_updates_existing_trip_and_calculates_totals(): void
     {
         $trip = $this->draft();
@@ -959,7 +1019,7 @@ class TripsManagementTest extends TestCase
         $this->assertNull($trip->date_completed);
         $this->assertEquals(['Open'], $trip->history()->pluck('status')->all());
         $payload['version'] = $trip->version;
-        $payload['trip_no'] = 'SAVED-EDIT';
+        $payload['trip_no'] = '2';
         $this->putJson(route('trips.update', $trip), $payload)->assertOk()->assertJsonPath('trip.current_status', 'Open');
         $trip->refresh();
         $savedPeople = $trip->personnels()->get()->toArray();
@@ -968,7 +1028,7 @@ class TripsManagementTest extends TestCase
         $version = $trip->version;
         $this->postJson(route('trips.dispatch', $trip), ['version' => $version, 'reason' => 'Dispatch saved document'])->assertOk()->assertJsonPath('trip.current_status', 'Dispatched');
         $trip->refresh();
-        $this->assertEquals('SAVED-EDIT', $trip->trip_no);
+        $this->assertEquals('2', $trip->trip_no);
         $this->assertEquals($version + 1, $trip->version);
         $this->assertEquals($savedPeople, $trip->personnels()->get()->toArray());
         $this->assertEquals($savedCosts, $trip->costs()->get()->toArray());
@@ -1096,6 +1156,6 @@ class TripsManagementTest extends TestCase
         $cost = OtherCost::create(['cost_code' => 'C-'.$suffix, 'cost_name' => 'Toll', 'is_cash_release' => true, 'is_active' => true]);
         $tariff = TripRate::create(['warehouse_code' => 'TEST', 'trip_type' => $type->trip_type, 'vehicle_group' => 'Truck', 'vehicle_type' => 'Truck', 'trip_number' => 'RATE-'.$suffix, 'payment_type' => $payment->payment_type, 'client_code' => 'TEST', 'route_origin' => 'Manila', 'farthest_destination' => 'Calamba', 'cargo_capacity' => 5000, 'minimum_drop' => 1, 'driver_rate' => 1000, 'helper_rate' => 500, 'driver_cash_released_percentage' => 60, 'helper_cash_released_percentage' => 50, 'additional_driver_rate' => 100, 'additional_helper_rate' => 50, 'bypass_fuel_liters' => 0, 'is_active' => true]);
 
-        return ['version' => 0, 'vehicle_id' => $vehicle->id, 'tariff_id' => $tariff->id, 'trip_no' => 'T-'.$suffix, 'trip_type' => $type->trip_type, 'payment_type' => $payment->payment_type, 'drops_number' => 2, 'trip_route_city' => 'Manila', 'trip_route_origin' => 'Manila', 'trip_route_destination' => 'Calamba', 'personnels' => [['employee_id' => $employee->id, 'designation' => 'Driver', 'salary' => 0]], 'segments' => [['origin_id' => $origin->id, 'destination_id' => $destination->id, 'total_distance' => 100]], 'fuel_purchases' => [['fuel_supplier' => $supplier->id, 'liters_required' => 10, 'price_per_liter' => 60]], 'costs' => [['cost_code' => $cost->id, 'costgroup' => 'Road', 'is_cash_released' => 1, 'released_amount' => 50, 'nonreleased_amount' => 0]]];
+        return ['version' => 0, 'vehicle_id' => $vehicle->id, 'tariff_id' => $tariff->id, 'trip_no' => '1', 'trip_type' => $type->trip_type, 'payment_type' => $payment->payment_type, 'drops_number' => 2, 'trip_route_city' => 'Manila', 'trip_route_origin' => 'Manila', 'trip_route_destination' => 'Calamba', 'personnels' => [['employee_id' => $employee->id, 'designation' => 'Driver', 'salary' => 0]], 'segments' => [['origin_id' => $origin->id, 'destination_id' => $destination->id, 'total_distance' => 100]], 'fuel_purchases' => [['fuel_supplier' => $supplier->id, 'liters_required' => 10, 'price_per_liter' => 60]], 'costs' => [['cost_code' => $cost->id, 'costgroup' => 'Road', 'is_cash_released' => 1, 'released_amount' => 50, 'nonreleased_amount' => 0]]];
     }
 }

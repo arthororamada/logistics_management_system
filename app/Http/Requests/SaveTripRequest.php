@@ -30,6 +30,8 @@ class SaveTripRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'trip_no.in' => 'Please select a trip number from 1 to 5.',
+            'trip_no.integer' => 'Please select a trip number from 1 to 5.',
             'personnels.*.employee_id.exists' => 'Select existing Active personnel to assign to a trip.',
             'personnels.required' => TripFormValidation::MESSAGES['personnels'],
             'segments.required' => TripFormValidation::MESSAGES['segments'],
@@ -62,7 +64,7 @@ class SaveTripRequest extends FormRequest
             'version' => 'required|integer|min:0',
             'vehicle_id' => ['required', 'integer', Rule::exists('vehicles', 'id')],
             'tariff_id' => ['required', 'integer', $active('trip_rates')],
-            'trip_no' => 'required|string|max:150',
+            'trip_no' => 'required|integer|in:1,2,3,4,5',
             'trip_type' => ['required', 'string', $active('trip_types', 'trip_type')],
             'payment_type' => ['required', 'string', $active('trip_payments', 'payment_type')],
             'drops_number' => 'required|integer|min:0|max:10000',

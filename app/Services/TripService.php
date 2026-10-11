@@ -231,6 +231,9 @@ class TripService
                 $errors[$field] = TripFormValidation::MESSAGES[TripFormValidation::section($field)];
             }
         }
+        if ($trip->trip_no && ! in_array((string) $trip->trip_no, ['1', '2', '3', '4', '5'], true)) {
+            $errors['trip_no'] = 'Please select a trip number from 1 to 5.';
+        }
         if (! $trip->personnels()->whereRaw('LOWER(designation) = ?', ['driver'])->exists()) {
             $errors['personnels'] = TripFormValidation::MESSAGES['personnels'];
         }
