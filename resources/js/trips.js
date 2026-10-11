@@ -2,6 +2,7 @@ import { personnelSalaryCents } from './trip-calculations';
 import { enhanceTripSelects, refreshTripSelects, expandTripSection } from './trip-searchable-select';
 import { notifications } from './notifications';
 import { createTripDialogs, withTripSubmissionLock, readTripResponse } from './trip-dialogs';
+import { syncTripCost } from './trip-costs';
 
 document.addEventListener('DOMContentLoaded', () => {
     const dialogs = createTripDialogs(notifications);
@@ -89,13 +90,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             syncDisbursements();
         };
-        const syncFuelTotals = () => {
-            editor.querySelectorAll('[data-trip-collection="fuel_purchases"] [data-trip-row]').forEach((row) => {
-                const liters = Number(row.querySelector('[name$="[liters_required]"]').value || 0);
-                const price = Number(row.querySelector('[name$="[price_per_liter]"]').value || 0);
-                row.querySelector('[data-fuel-total]').value = (liters * price).toFixed(2);
-            });
-        };
         const reindex = (name) => {
             editor.querySelectorAll(`[data-trip-collection="${name}"] [data-trip-row]`).forEach((row, index) => {
                 row.querySelectorAll('[name]').forEach((input) => { input.name = input.name.replace(/\[[^\]]+\]/, `[${index}]`); });
@@ -107,9 +101,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const name = add.dataset.tripAdd;
                 editor.querySelector(`[data-trip-collection="${name}"]`).append(document.getElementById(`trip-template-${name}`).content.cloneNode(true));
                 reindex(name);
+                if (name === 'costs') editor.querySelectorAll('[data-trip-collection="costs"] [data-trip-row]').forEach((row) => syncTripCost(row));
                 enhanceTripSelects(editor);
                 if (name === 'personnels') syncPersonnelSalaries();
-                if (name === 'fuel_purchases') syncFuelTotals();
             }
             const remove = event.target.closest('[data-trip-remove]');
             if (remove) {
@@ -126,14 +120,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const field = event.target;
             const row = field.closest('[data-trip-row]');
             if (row && field.name.endsWith('[fuel_supplier]')) row.querySelector('[name$="[price_per_liter]"]').value = field.selectedOptions[0]?.dataset.price ?? 0;
-            if (row && field.name.endsWith('[cost_code]')) row.querySelector('[name$="[is_cash_released]"]').value = field.selectedOptions[0]?.dataset.cash ?? 0;
+            if (row?.closest('[data-trip-collection="costs"]')) syncTripCost(row, field.name.match(/\[(\w+)\]$/)?.[1]);
             if (row?.closest('[data-trip-collection="personnels"]')) syncPersonnelSalaries();
-            if (row?.closest('[data-trip-collection="fuel_purchases"]')) syncFuelTotals();
             refreshTripSelects(editor);
         });
         editor.addEventListener('input', (event) => {
             if (event.target.name === 'drops_number') syncPersonnelSalaries();
-            if (event.target.closest('[data-trip-collection="fuel_purchases"]')) syncFuelTotals();
+            const costRow = event.target.closest('[data-trip-collection="costs"] [data-trip-row]');
+            if (costRow) syncTripCost(costRow);
             const row = event.target.closest('[data-disbursement-row]');
             if (row && event.target.name.endsWith('[cash_released]')) {
                 captureReleases();
@@ -156,7 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
             syncPersonnelSalaries();
             refreshTripSelects(editor);
         });
-        syncPersonnelSalaries(); syncFuelTotals();
+        syncPersonnelSalaries();
+        editor.querySelectorAll('[data-trip-collection="costs"] [data-trip-row]').forEach((row) => syncTripCost(row));
         editor.querySelectorAll('[data-trip-section] .card-header').forEach((header) => {
             header.addEventListener('click', (event) => {
                 if (!event.target.closest('button, a, input')) header.querySelector('[data-card-toggle]')?.click();

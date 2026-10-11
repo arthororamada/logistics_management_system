@@ -9,6 +9,7 @@ use App\Models\Route;
 use App\Models\ShippingRate;
 use App\Models\Trip;
 use App\Models\TripRate;
+use App\Models\User;
 use App\Models\Vehicle;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
@@ -20,6 +21,7 @@ class TripService
     {
         abort_unless($trip->current_status === 'Open', 409, 'Only open trips can be edited.');
         abort_unless((int) $data['version'] === (int) $trip->version, 409, 'This trip changed. Reload before saving.');
+        $this->prepareFuelCosts($trip, $data, $userId);
         $trip->fill(Arr::only($data, ['vehicle_id', 'tariff_id', 'trip_no', 'trip_type', 'payment_type', 'drops_number', 'gcash_number']));
         $vehicle = $trip->vehicle_id ? Vehicle::findOrFail($trip->vehicle_id) : null;
         foreach (['van_number' => 'body_number', 'vehicle_group' => 'vehicle_group', 'plate_number' => 'plate_number', 'fuel_type' => 'fuel_type', 'engine_number' => 'engine_number', 'chassis_no' => 'chassi_number', 'fuel_capacity' => 'fuel_capacity', 'fuel_usage' => 'fuel_usage_per_kilometer', 'cargo_capacity' => 'cargo_capacity'] as $target => $source) {
@@ -95,16 +97,63 @@ class TripService
         foreach ($data['fuel_purchases'] as &$fuel) {
             $fuel['supplier_name'] = FuelSupplier::findOrFail($fuel['fuel_supplier'])->fuel_supplier_name;
             $fuel['fuel_price'] = round((float) $fuel['liters_required'] * (float) $fuel['price_per_liter'], 2);
+            if ($this->cents($fuel['fuel_price']) > 99999999) {
+                throw ValidationException::withMessages(['fuel_purchases' => 'Calculated fuel cost exceeds the supported amount.']);
+            }
             $fuelCents += $this->cents($fuel['fuel_price']);
         }
         unset($fuel);
-        foreach ($data['costs'] as &$cost) {
+        $existingCosts = $trip->costs()->get()->keyBy('id');
+        foreach ($data['costs'] as $index => &$cost) {
             $definition = OtherCost::findOrFail($cost['cost_code']);
+            $type = strtoupper(trim($definition->cost_code));
+            $modern = array_key_exists('cost_amount', $cost);
+            $original = $existingCosts->get($cost['id'] ?? null);
+            if ($modern) {
+                $cost['reference_id'] = $original?->reference_id;
+                $cost['costgroup'] = $original?->costgroup;
+            }
+            if (in_array($type, ['FUEL_PURCHASE', 'CASH_FUEL'])) {
+                foreach (['liters_required', 'price_per_liter'] as $field) {
+                    if (! isset($cost[$field])) {
+                        throw ValidationException::withMessages(["costs.$index.$field" => 'Required for cash fuel costs.']);
+                    }
+                }
+                if ($type === 'FUEL_PURCHASE' && empty($cost['fuel_supplier'])) {
+                    throw ValidationException::withMessages(["costs.$index.fuel_supplier" => 'Select a fuel supplier.']);
+                }
+                $cost['cost_amount'] = round((float) $cost['liters_required'] * (float) $cost['price_per_liter'], 2);
+                $modern = true;
+            } else {
+                $cost['liters_required'] = $cost['price_per_liter'] = null;
+            }
+            if ($type === 'RORO_COST' && (empty($cost['shipping_rate_id']) || empty($cost['shipping_line_name']))) {
+                throw ValidationException::withMessages(["costs.$index.shipping_rate_id" => 'Select a shipping line and route.']);
+            }
+            if ($modern && $type !== 'RORO_COST') {
+                $cost['shipping_rate_id'] = null;
+            }
+            if ($modern) {
+                $amount = $this->cents($cost['cost_amount']);
+                if ($amount > 99999999) {
+                    throw ValidationException::withMessages(["costs.$index.cost_amount" => 'Calculated cost exceeds the supported amount.']);
+                }
+                $cost['released_amount'] = $definition->is_cash_release ? $amount / 100 : 0;
+                $cost['nonreleased_amount'] = $definition->is_cash_release ? 0 : $amount / 100;
+            } elseif (! isset($cost['released_amount'], $cost['nonreleased_amount'])) {
+                throw ValidationException::withMessages(["costs.$index.cost_amount" => 'Enter a cost amount.']);
+            }
             $cost['cost_name'] = $definition->cost_code.' · '.$definition->cost_name;
             $cost['shipping_description'] = null;
             $cost['is_cash_released'] = $definition->is_cash_release;
             if (! empty($cost['shipping_rate_id'])) {
                 $shipping = ShippingRate::findOrFail($cost['shipping_rate_id']);
+                if ($type === 'RORO_COST' && $shipping->shipping_line_name !== $cost['shipping_line_name']) {
+                    throw ValidationException::withMessages(["costs.$index.shipping_rate_id" => 'Shipping route must belong to the selected shipping line.']);
+                }
+                if ($modern && $this->cents($shipping->shippine_rate) > 99999999) {
+                    throw ValidationException::withMessages(["costs.$index.cost_amount" => 'Shipping rate exceeds the supported amount.']);
+                }
                 $cost['shipping_description'] = $shipping->shipping_line_name.' · '.$shipping->port_origin.' → '.$shipping->port_destination.' · '.$shipping->vehicle_type;
                 if (! $vehicle || $shipping->vehicle_type !== $vehicle->vehicle_type) {
                     throw ValidationException::withMessages(['costs' => 'Shipping rate must match the selected vehicle type.']);
@@ -117,6 +166,10 @@ class TripService
             }
             $released += $this->cents($cost['released_amount']);
             $nonreleased += $this->cents($cost['nonreleased_amount']);
+            if ($type !== 'FUEL_PURCHASE') {
+                $cost['fuel_supplier'] = null;
+            }
+            unset($cost['cost_amount'], $cost['shipping_line_name']);
         }
         unset($cost);
         foreach (['personnels' => 'personnels', 'segments' => 'segments', 'fuel_purchases' => 'fuelPurchases', 'costs' => 'costs'] as $key => $relation) {
@@ -192,6 +245,10 @@ class TripService
             $errors['segments'] = 'An assigned route is inactive. Update the trip before dispatch.';
         }
         $shippingIds = $trip->costs()->whereNotNull('shipping_rate_id')->pluck('shipping_rate_id')->unique();
+        $supplierIds = $trip->costs()->whereNotNull('fuel_supplier')->pluck('fuel_supplier')->unique();
+        if (FuelSupplier::whereIn('id', $supplierIds)->where('is_active', true)->count() !== $supplierIds->count()) {
+            $errors['costs'] = 'An assigned fuel supplier is inactive. Update the trip before dispatch.';
+        }
         if (ShippingRate::whereIn('id', $shippingIds)->where('is_active', true)->count() !== $shippingIds->count()) {
             $errors['costs'] = 'An assigned shipping rate is inactive. Update the trip before dispatch.';
         }
@@ -220,6 +277,56 @@ class TripService
     private function cents($value): int
     {
         return (int) round((float) $value * 100);
+    }
+
+    private function prepareFuelCosts(Trip $trip, array &$data, int $userId): void
+    {
+        $available = OtherCost::availableTo(User::findOrFail($userId))->get()->keyBy('id');
+        $existingFuelIds = $trip->fuelPurchases()->pluck('id')->all();
+        $existingCosts = $trip->costs()->get()->keyBy('id');
+        foreach ($data['costs'] as $index => &$cost) {
+            $fuelId = $cost['fuel_purchase_id'] ?? null;
+            $costId = $cost['id'] ?? null;
+            if ($costId && ! $existingCosts->has($costId)) {
+                throw ValidationException::withMessages(['costs' => 'A related record does not belong to this trip.']);
+            }
+            if ($fuelId && (! in_array($fuelId, $existingFuelIds) || $costId)) {
+                throw ValidationException::withMessages(["costs.$index.fuel_purchase_id" => 'Fuel record does not belong to this trip cost.']);
+            }
+            $definition = $available->get($cost['cost_code'] ?? null);
+            // Existing fuel records predate the configurable fuel cost code.
+            if (! $definition && (! $fuelId || ! empty($cost['cost_code']))) {
+                throw ValidationException::withMessages(["costs.$index.cost_code" => 'Select a cost code available to you.']);
+            }
+            $type = $definition ? strtoupper(trim($definition->cost_code)) : 'FUEL_PURCHASE';
+            unset($cost['fuel_purchase_id']);
+            if ($type !== 'FUEL_PURCHASE') {
+                continue;
+            }
+            // Preserve fuel costs saved by the earlier additional-cost form.
+            if ($costId && $existingCosts->get($costId)->cost_code == $cost['cost_code']) {
+                continue;
+            }
+            if ($costId && $existingCosts->get($costId)->reference_id) {
+                throw ValidationException::withMessages(["costs.$index.cost_code" => 'A cost with a cash release reference cannot be converted to a fuel purchase.']);
+            }
+            foreach (['fuel_supplier', 'liters_required', 'price_per_liter'] as $field) {
+                if (! isset($cost[$field])) {
+                    throw ValidationException::withMessages(["costs.$index.$field" => 'Required for fuel purchases.']);
+                }
+            }
+            $amount = round((float) $cost['liters_required'] * (float) $cost['price_per_liter'], 2);
+            if ($this->cents($amount) > 99999999) {
+                throw ValidationException::withMessages(["costs.$index.cost_amount" => 'Calculated fuel cost exceeds the supported amount.']);
+            }
+            $data['fuel_purchases'][] = Arr::only($cost, ['fuel_supplier', 'liters_required', 'price_per_liter', 'remarks']) + ['id' => $fuelId];
+            unset($data['costs'][$index]);
+        }
+        unset($cost);
+        $ids = array_filter(array_column($data['fuel_purchases'], 'id'));
+        if (count($data['fuel_purchases']) > 200 || count($ids) !== count(array_unique($ids))) {
+            throw ValidationException::withMessages(['fuel_purchases' => 'Fuel records must be unique and limited to 200 per trip.']);
+        }
     }
 
     public function financialSummary(Trip $trip): array

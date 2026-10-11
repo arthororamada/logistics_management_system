@@ -7,6 +7,7 @@ use App\Models\FuelSupplier;
 use App\Models\OtherCost;
 use App\Models\Personnel;
 use App\Models\Route as Location;
+use App\Models\ShippingLine;
 use App\Models\ShippingRate;
 use App\Models\Trip;
 use App\Models\TripPayment;
@@ -76,8 +77,20 @@ class TripController extends Controller
             'tripRates' => TripRate::where('is_active', true)->get(),
             'locations' => Location::where('is_active', true)->get(),
             'shippingRates' => ShippingRate::where('is_active', true)->get(),
+            'shippingLines' => ShippingLine::where('is_active', true)->orderBy('shipping_line_name')->get(),
         ];
         $data['designations'] = $data['employees']->where('is_active', true)->pluck('position')->filter(fn ($position) => trim((string) $position) !== '')->unique(fn ($position) => mb_strtolower($position))->sort()->values();
+        $data['availableCostCodes'] = OtherCost::availableTo($request->user())->orderBy('cost_code')->get()->keyBy('id');
+        $fuelCode = $data['availableCostCodes']->first(fn ($code) => strtoupper(trim($code->cost_code)) === 'FUEL_PURCHASE');
+        $data['costRows'] = $trip->costs->toArray();
+        foreach ($trip->fuelPurchases as $fuel) {
+            $data['costRows'][] = [
+                'fuel_purchase_id' => $fuel->id, 'cost_code' => $fuelCode?->id,
+                'fuel_supplier' => $fuel->fuel_supplier, 'liters_required' => $fuel->liters_required,
+                'price_per_liter' => $fuel->price_per_liter, 'cost_amount' => $fuel->fuel_price,
+                'remarks' => $fuel->remarks,
+            ];
+        }
         if ($request->expectsJson()) {
             return response()->json($trip);
         }

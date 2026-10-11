@@ -98,6 +98,7 @@ function enhance(select) {
     };
     const refresh = () => {
         input.disabled = select.disabled;
+        if (select.disabled || select.validity.valid) input.setCustomValidity('');
         if (panel.hidden) input.value = selectedLabel();
         else render();
     };

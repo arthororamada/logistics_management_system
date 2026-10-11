@@ -261,7 +261,9 @@ class TripsManagementTest extends TestCase
         @$document->loadHTML('<?xml encoding="UTF-8">'.$response->getContent());
         $xpath = new \DOMXPath($document);
         $sections = $xpath->query('//form[@id="trip-form"]/section[@data-trip-section]');
-        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'fuel_purchases', 'costs', 'disbursements'], array_map(fn ($section) => $section->getAttribute('data-trip-section'), iterator_to_array($sections)));
+        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'costs', 'disbursements'], array_map(fn ($section) => $section->getAttribute('data-trip-section'), iterator_to_array($sections)));
+        $this->assertEquals(0, $xpath->query('//*[@data-trip-collection="fuel_purchases" or @id="trip-template-fuel_purchases"]')->length);
+        $this->assertEquals(1, $xpath->query('//section[@data-trip-section="costs"]//input[contains(@name,"[fuel_purchase_id]")]')->length);
         foreach ($sections as $section) {
             $this->assertStringContainsString('is-collapsed', $section->getAttribute('class'));
             $this->assertEquals(1, $xpath->query('.//div[@class="card-body" and @hidden]', $section)->length);
@@ -431,6 +433,264 @@ class TripsManagementTest extends TestCase
         $document = new \DOMDocument;
         @$document->loadHTML($response->getContent());
         $this->assertEquals(0, (new \DOMXPath($document))->query('//select[not(@data-trip-searchable)]')->length);
+    }
+
+    private function costCode(string $code, bool $cash = false): OtherCost
+    {
+        $record = OtherCost::firstOrCreate(['cost_code' => $code], ['cost_name' => $code, 'is_cash_release' => $cash, 'is_active' => true]);
+        $record->update(['is_cash_release' => $cash, 'is_active' => true]);
+        return $record;
+    }
+
+    public function test_default_and_cash_roro_amounts_preserve_backend_release_metadata(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $code = $payload['costs'][0]['cost_code'];
+        $payload['costs'] = [['cost_code' => $code, 'cost_amount' => 85.25, 'remarks' => 'Cost test']];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $cost = $trip->costs()->firstOrFail();
+        $this->assertEquals(85.25, $cost->released_amount);
+        $cost->update(['reference_id' => 'BACKEND-REFERENCE', 'costgroup' => 'Road']);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0] += ['id' => $cost->id, 'reference_id' => 'FORGED'];
+        $payload['costs'][0]['cost_amount'] = 90;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals('BACKEND-REFERENCE', $cost->fresh()->reference_id);
+        $this->assertEquals('Road', $cost->fresh()->costgroup);
+        $response = $this->get(route('trips.show', $trip))->assertOk()->assertDontSee('BACKEND-REFERENCE');
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        foreach (['released_amount', 'nonreleased_amount', 'reference_id', 'is_cash_released', 'costgroup'] as $field) {
+            $this->assertEquals(0, $xpath->query('//section[@data-trip-section="costs"]//*[@name and contains(@name,"['.$field.']")]')->length);
+        }
+        OtherCost::find($code)->update(['is_cash_release' => false]);
+        $payload['version'] = $trip->fresh()->version;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(90, $cost->fresh()->nonreleased_amount);
+        $this->assertEquals(0, $cost->fresh()->released_amount);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0]['cost_code'] = $this->costCode('CASH_RORO', true)->id;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(90, $cost->fresh()->released_amount);
+        $payload['version'] = $trip->fresh()->version;
+        unset($payload['costs'][0]['cost_amount']);
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.cost_amount');
+    }
+
+    public function test_cash_fuel_recalculates_and_persists_details_with_validation(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $payload['costs'] = [['cost_code' => $this->costCode('CASH_FUEL', true)->id, 'cost_amount' => 1, 'liters_required' => 12.25, 'price_per_liter' => 61.35]];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $cost = $trip->costs()->firstOrFail();
+        $this->assertEquals(751.54, $cost->released_amount);
+        $this->assertEquals(12.25, $cost->liters_required);
+        $this->assertEquals(61.35, $cost->price_per_liter);
+        $this->get(route('trips.show', $trip))->assertOk()->assertSee('751.54');
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0]['id'] = $cost->id;
+        $payload['costs'][0]['liters_required'] = 10;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(613.50, $cost->fresh()->released_amount);
+        $payload['version'] = $trip->fresh()->version;
+        unset($payload['costs'][0]['price_per_liter']);
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.price_per_liter');
+        $payload['costs'][0]['price_per_liter'] = -60;
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.price_per_liter');
+        $payload['costs'][0]['price_per_liter'] = 60;
+        $payload['costs'][0]['liters_required'] = -1;
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.liters_required');
+        $payload['costs'][0]['liters_required'] = 999999.99;
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.cost_amount');
+        $payload['costs'][0]['cost_code'] = $this->costCode('CASH_RORO', true)->id;
+        $payload['costs'][0]['cost_amount'] = 70;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertNull($cost->fresh()->liters_required);
+        $this->assertNull($cost->fresh()->price_per_liter);
+        $this->assertEquals(70, $cost->fresh()->released_amount);
+    }
+
+    public function test_roro_requires_matching_line_route_and_uses_server_rate(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $code = $this->costCode('RORO_COST');
+        $line = \App\Models\ShippingLine::create(['shipping_line_name' => 'Line '.Str::random(8), 'billing_address' => 'Manila', 'focal_person' => 'Test', 'contact_number' => '123', 'is_active' => true]);
+        $other = $line->replicate();
+        $other->shipping_line_name = 'Other '.Str::random(8);
+        $other->save();
+        $rate = ShippingRate::create(['shipping_line_name' => $line->shipping_line_name, 'port_origin' => 'Manila', 'port_destination' => 'Cebu', 'vehicle_type' => 'Truck', 'shippine_rate' => 1234.56, 'is_active' => true]);
+        $payload['costs'] = [['cost_code' => $code->id, 'cost_amount' => 1]];
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.shipping_rate_id');
+        $payload['costs'][0] += ['shipping_rate_id' => $rate->id, 'shipping_line_name' => $other->shipping_line_name];
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.shipping_rate_id');
+        $payload['costs'][0]['shipping_line_name'] = $line->shipping_line_name;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $cost = $trip->costs()->firstOrFail();
+        $this->assertEquals(1234.56, $cost->nonreleased_amount);
+        $this->get(route('trips.show', $trip))->assertOk()->assertSee($line->shipping_line_name)->assertSee('1234.56');
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0]['id'] = $cost->id;
+        $rate->update(['shippine_rate' => 1500]);
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(1500, $cost->fresh()->nonreleased_amount);
+        $payload['version'] = $trip->fresh()->version;
+        $rate->update(['is_active' => false]);
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.shipping_rate_id');
+        $rate->update(['is_active' => true, 'vehicle_type' => 'Van']);
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs');
+    }
+
+    public function test_unified_fuel_costs_save_edit_convert_and_remove_without_duplication(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $ordinary = $payload['costs'][0]['cost_code'];
+        $supplier = $payload['fuel_purchases'][0]['fuel_supplier'];
+        $fuelCode = $this->costCode('FUEL_PURCHASE');
+        $payload['fuel_purchases'] = [];
+        $payload['costs'] = [['cost_code' => $fuelCode->id, 'fuel_supplier' => $supplier, 'liters_required' => 10, 'price_per_liter' => 60, 'cost_amount' => 1, 'remarks' => 'Supplier invoice']];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $record = $trip->fuelPurchases()->firstOrFail();
+        $this->assertEquals(600, $record->fuel_price);
+        $this->assertEquals('Supplier invoice', $record->remarks);
+        $this->assertEquals(0, $trip->costs()->count());
+        $this->assertEquals(1700, $trip->fresh()->total_cost);
+        $response = $this->get(route('trips.show', $trip))->assertOk()->assertSee('Supplier invoice')->assertDontSee('data-trip-section="fuel_purchases"', false);
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $this->assertEquals(1, (new \DOMXPath($document))->query('//section[@data-trip-section="costs"]//input[contains(@name,"[fuel_purchase_id]") and @value="'.$record->id.'"]')->length);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0]['fuel_purchase_id'] = $record->id;
+        $payload['costs'][0]['liters_required'] = 12.25;
+        $payload['costs'][0]['price_per_liter'] = 61.35;
+        $payload['costs'][0]['remarks'] = 'Corrected invoice';
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(1, $trip->fuelPurchases()->count());
+        $this->assertEquals(751.54, $record->fresh()->fuel_price);
+        $this->assertEquals('Corrected invoice', $record->fresh()->remarks);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0] = ['cost_code' => $ordinary, 'fuel_purchase_id' => $record->id, 'cost_amount' => 70];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(0, $trip->fuelPurchases()->count());
+        $this->assertEquals(1, $trip->costs()->count());
+        $this->assertEquals(0, $trip->fresh()->fuel_price);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'] = [];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(0, $trip->costs()->count());
+    }
+
+    public function test_unified_costs_preserve_legacy_fuel_without_an_active_fuel_code(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        OtherCost::where('cost_code', 'FUEL_PURCHASE')->update(['is_active' => false]);
+        $record = $trip->fuelPurchases()->firstOrFail();
+        $this->get(route('trips.show', $trip))->assertOk()->assertSee('FUEL_PURCHASE')->assertDontSee('data-trip-collection="fuel_purchases"', false);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['fuel_purchases'] = [];
+        $payload['costs'][] = ['fuel_purchase_id' => $record->id, 'cost_code' => null, 'fuel_supplier' => $record->fuel_supplier, 'liters_required' => 10, 'price_per_liter' => 60, 'cost_amount' => 1, 'remarks' => 'Legacy record'];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(1, $trip->fuelPurchases()->count());
+        $this->assertEquals(600, $record->fresh()->fuel_price);
+        $this->assertEquals('Legacy record', $record->fresh()->remarks);
+        $this->assertEquals(1750, $trip->fresh()->total_cost);
+    }
+
+    public function test_unified_costs_reject_foreign_and_duplicate_fuel_ids(): void
+    {
+        $trip = $this->draft();
+        $otherTrip = $this->draft();
+        $payload = $this->payload();
+        $this->putJson(route('trips.update', $otherTrip), $payload)->assertOk();
+        $record = $otherTrip->fuelPurchases()->firstOrFail();
+        $payload['fuel_purchases'] = [];
+        $payload['costs'] = [['fuel_purchase_id' => $record->id, 'fuel_supplier' => $record->fuel_supplier, 'liters_required' => 10, 'price_per_liter' => 60, 'cost_amount' => 600]];
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.fuel_purchase_id');
+        $this->assertEquals(600, $record->fresh()->fuel_price);
+        $payload['version'] = $otherTrip->fresh()->version;
+        $payload['costs'][] = $payload['costs'][0];
+        $this->putJson(route('trips.update', $otherTrip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.fuel_purchase_id');
+        array_pop($payload['costs']);
+        $payload['fuel_purchases'] = [['id' => $record->id, 'fuel_supplier' => $record->fuel_supplier, 'liters_required' => 10, 'price_per_liter' => 60]];
+        $this->putJson(route('trips.update', $otherTrip), $payload)->assertUnprocessable()->assertJsonValidationErrors('fuel_purchases');
+    }
+
+    public function test_cost_availability_follows_trip_permissions_and_inactive_codes_are_rejected(): void
+    {
+        $payload = $this->payload();
+        $code = OtherCost::findOrFail($payload['costs'][0]['cost_code']);
+        $role = Role::firstOrCreate(['slug' => 'trip-cost-editor', 'name' => 'Trip cost editor']);
+        $role->permissions()->sync(\App\Models\Permission::whereIn('slug', ['trips.view', 'trips.create', 'trips.update'])->pluck('id'));
+        $user = User::create(['name' => 'Trip editor', 'username' => 'cost-editor-'.Str::random(8), 'password' => 'password', 'is_active' => true]);
+        $user->roles()->attach($role);
+        $this->assertFalse($user->hasPermission('other-costs.view'));
+        $this->assertTrue(OtherCost::availableTo($user)->whereKey($code)->exists());
+        $this->actingAs($user);
+        $trip = $this->draft();
+        $this->get(route('trips.show', $trip))->assertOk()->assertSee($code->cost_code);
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $code->update(['is_active' => false]);
+        $response = $this->get(route('trips.show', $trip))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $this->assertEquals(0, (new \DOMXPath($document))->query('//select[@data-cost-code]/option[@value="'.$code->id.'"]')->length);
+        $payload['version'] = $trip->fresh()->version;
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.cost_code');
+        $role->permissions()->detach(\App\Models\Permission::where('slug', 'trips.update')->value('id'));
+        $this->assertCount(0, OtherCost::availableTo($user)->get());
+        $this->putJson(route('trips.update', $trip), $payload)->assertForbidden();
+    }
+
+    public function test_unified_fuel_saves_and_dispatches_with_snapshots_and_remarks(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $supplier = $payload['fuel_purchases'][0]['fuel_supplier'];
+        $payload['fuel_purchases'] = [];
+        $payload['costs'] = [['cost_code' => $this->costCode('FUEL_PURCHASE')->id, 'fuel_supplier' => $supplier, 'liters_required' => 10, 'price_per_liter' => 60, 'cost_amount' => 1, 'remarks' => 'Dispatch fuel']];
+        $this->postJson(route('trips.dispatch', $trip), $payload)->assertOk();
+        $this->assertEquals('Dispatched', $trip->fresh()->current_status);
+        $this->assertEquals(600, $trip->fresh()->fuel_price);
+        $this->assertEquals(1700, $trip->fresh()->total_cost);
+        FuelSupplier::findOrFail($supplier)->update(['fuel_supplier_name' => 'Renamed supplier']);
+        $this->get(route('trips.print', $trip))->assertOk()->assertSee('Dispatch fuel')->assertSee('Additional trip costs')->assertDontSee('Renamed supplier')->assertDontSee('<h3>Fuel purchases</h3>', false);
+    }
+
+    public function test_earlier_fuel_cost_records_keep_storage_and_cash_release_reference(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $code = $this->costCode('FUEL_PURCHASE');
+        $cost = $trip->costs()->create(['cost_code' => $code->id, 'fuel_supplier' => $payload['fuel_purchases'][0]['fuel_supplier'], 'liters_required' => 10, 'price_per_liter' => 60, 'nonreleased_amount' => 600, 'released_amount' => 0, 'reference_id' => 'OLD-FUEL-REF', 'created_by' => $this->admin->id]);
+        $payload['fuel_purchases'] = [];
+        $payload['costs'] = [['id' => $cost->id, 'cost_code' => $code->id, 'fuel_supplier' => $cost->fuel_supplier, 'liters_required' => 12, 'price_per_liter' => 60, 'cost_amount' => 1, 'remarks' => 'Existing fuel cost']];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(0, $trip->fuelPurchases()->count());
+        $this->assertEquals(1, $trip->costs()->count());
+        $this->assertEquals(720, $cost->fresh()->nonreleased_amount);
+        $this->assertEquals('OLD-FUEL-REF', $cost->fresh()->reference_id);
+        $this->get(route('trips.show', $trip))->assertOk()->assertSee('720.00')->assertDontSee('OLD-FUEL-REF');
+    }
+
+    public function test_converting_a_referenced_cost_to_supplier_fuel_cannot_lose_release_metadata(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $cost = $trip->costs()->firstOrFail();
+        $cost->update(['reference_id' => 'RELEASED-COST']);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'] = [['id' => $cost->id, 'cost_code' => $this->costCode('FUEL_PURCHASE')->id, 'fuel_supplier' => $payload['fuel_purchases'][0]['fuel_supplier'], 'liters_required' => 10, 'price_per_liter' => 60, 'cost_amount' => 600]];
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.cost_code');
+        $this->assertEquals('RELEASED-COST', $cost->fresh()->reference_id);
+        $this->assertEquals(1, $trip->costs()->count());
+        $this->assertEquals(1, $trip->fuelPurchases()->count());
     }
 
     private function payload(): array

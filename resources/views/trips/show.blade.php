@@ -44,11 +44,11 @@
             @endforeach
         </div>
     </x-card>
-    @foreach(['segments'=>'Route','personnels'=>'Personnel','fuel_purchases'=>'Fuel Purchase','costs'=>'Additional Trip Costs'] as $collection=>$title)
+    @foreach(['segments'=>'Route','personnels'=>'Personnel','costs'=>'Additional Trip Costs'] as $collection=>$title)
     <x-card :title="$title" :data-trip-section="$collection" :collapsible="true" :collapsed="true" :id="'trip-section-'.$collection">
         <div data-trip-collection="{{ $collection }}">
-            @php($relation = ['personnels'=>'personnels','segments'=>'segments','fuel_purchases'=>'fuelPurchases','costs'=>'costs'][$collection])
-            @foreach(old($collection,$trip->$relation->toArray()) as $row)
+            @php($relation = ['personnels'=>'personnels','segments'=>'segments','costs'=>'costs'][$collection])
+            @foreach(old($collection,$collection==='costs' ? $costRows : $trip->$relation->toArray()) as $row)
                 @include('trips.row',['collection'=>$collection,'row'=>$row,'index'=>$loop->index])
             @endforeach
         </div>
