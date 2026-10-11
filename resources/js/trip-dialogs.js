@@ -19,6 +19,13 @@ export async function readTripResponse(response) {
 export function createTripDialogs(notifications) {
     return {
         confirm: async (action, message) => {
+            if (action === 'save') {
+                return notifications.confirm(message || 'Save the changes to this trip?', {
+                    title: 'Save Trip?',
+                    confirmButtonText: 'Save Trip',
+                    confirmButtonColor: '#1d4ed8',
+                });
+            }
             const complete = action === 'complete';
             return notifications.confirm(message || (complete
                 ? 'This trip will be marked as completed. Standard editing will no longer be available.'

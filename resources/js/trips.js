@@ -190,6 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editor.addEventListener('submit', async (event) => {
             event.preventDefault();
             await withTripSubmissionLock(editor, async () => {
+                if (!await dialogs.confirm('save')) return;
                 try {
                     await refreshAvailability();
                 } catch (error) {
@@ -209,7 +210,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     await dialogs.success(result.message || 'Trip saved successfully.');
                     window.location.assign(result.redirect);
                 } catch (error) {
-                    if (error.errors) validation.show(error.errors);
+                    if (error.errors) {
+                        validation.show(error.errors);
+                        await dialogs.error(error.message);
+                    }
                     else await report(error.message);
                 } finally {
                     if (button) button.textContent = label;
