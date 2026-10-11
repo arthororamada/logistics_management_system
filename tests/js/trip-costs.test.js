@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { syncTripCost } from '../../resources/js/trip-costs.js';
+import { matchingSelectOptions } from '../../resources/js/trip-searchable-select.js';
 
 function input(value = '') {
     return { value, disabled: false, required: false, readOnly: false, validationMessage: '', setCustomValidity(message) { this.validationMessage = message; } };
@@ -118,4 +119,23 @@ test('RORO requires a line, filters routes, supplies rate and resets on line cha
     assert.equal(fields.shipping_rate_id.value, '');
     assert.equal(fields.cost_amount.value, '');
     assert.equal(fields.cost_amount.readOnly, false);
+});
+
+test('RORO retains duplicate routes by record ID and uses the exact selected rate', () => {
+    const { row, fields } = fixture('RORO_COST');
+    const routes = fields.shipping_rate_id;
+    routes.options[1].textContent = 'Batangas → Calapan · Truck · PHP 1,234.56 · #1';
+    routes.options[2].textContent = 'Batangas → Calapan';
+    routes.options.push({ value: '3', dataset: { line: 'Line A', amount: '1500.00' }, textContent: 'Batangas → Calapan · Truck · PHP 1,500.00 · #3' });
+    routes.options[0].textContent = 'Select route';
+    fields.shipping_line_name.value = 'Line A';
+    syncTripCost(row, 'shipping_line_name');
+    assert.deepEqual(matchingSelectOptions(routes.options, 'calapan').map((option) => option.value), ['1', '3']);
+    routes.value = '3'; syncTripCost(row, 'shipping_rate_id');
+    assert.equal(fields.cost_amount.value, '1500.00');
+    routes.value = '1'; syncTripCost(row, 'shipping_rate_id');
+    assert.equal(fields.cost_amount.value, '1234.56');
+    routes.value = ''; syncTripCost(row, 'shipping_rate_id');
+    assert.equal(fields.cost_amount.value, '');
+    assert.equal(fields.cost_amount.readOnly, true);
 });

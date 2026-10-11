@@ -523,6 +523,9 @@ class TripsManagementTest extends TestCase
         $other->shipping_line_name = 'Other '.Str::random(8);
         $other->save();
         $rate = ShippingRate::create(['shipping_line_name' => $line->shipping_line_name, 'port_origin' => 'Manila', 'port_destination' => 'Cebu', 'vehicle_type' => 'Truck', 'shippine_rate' => 1234.56, 'is_active' => true]);
+        $otherRate = $rate->replicate();
+        $otherRate->shipping_line_name = $other->shipping_line_name;
+        $otherRate->save();
         $payload['costs'] = [['cost_code' => $code->id, 'cost_amount' => 1]];
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.shipping_rate_id');
         $payload['costs'][0] += ['shipping_rate_id' => $rate->id, 'shipping_line_name' => $other->shipping_line_name];
@@ -691,6 +694,77 @@ class TripsManagementTest extends TestCase
         $this->assertEquals('RELEASED-COST', $cost->fresh()->reference_id);
         $this->assertEquals(1, $trip->costs()->count());
         $this->assertEquals(1, $trip->fuelPurchases()->count());
+    }
+
+    public function test_roro_dropdowns_and_saved_amount_use_the_exact_shipping_rate_record(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $lineName = 'Rate-only '.Str::random(8);
+        $otherLine = 'Other rate line '.Str::random(8);
+        $noRates = \App\Models\ShippingLine::create(['shipping_line_name' => 'No rates '.Str::random(8), 'billing_address' => 'Manila', 'focal_person' => 'Test', 'contact_number' => '123', 'is_active' => true]);
+        $first = ShippingRate::create(['shipping_line_name' => $lineName, 'port_origin' => 'Batangas', 'port_destination' => 'Calapan', 'vehicle_type' => 'Truck', 'shippine_rate' => 1000, 'is_active' => true]);
+        $second = $first->replicate();
+        $second->shippine_rate = 1500;
+        $second->save();
+        $van = $first->replicate();
+        $van->vehicle_type = 'Van';
+        $van->shippine_rate = 2000;
+        $van->save();
+        $other = $first->replicate();
+        $other->shipping_line_name = $otherLine;
+        $other->port_destination = 'Puerto Galera';
+        $other->shippine_rate = 800;
+        $other->save();
+        $inactive = $first->replicate();
+        $inactive->shipping_line_name = 'Inactive rate '.Str::random(8);
+        $inactive->is_active = false;
+        $inactive->save();
+        $this->costCode('RORO_COST');
+        $response = $this->get(route('trips.show', $trip))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML('<?xml encoding="UTF-8">'.$response->getContent());
+        $xpath = new \DOMXPath($document);
+        $template = '//template[@id="trip-template-costs"]';
+        $lineSelect = $template.'//select[contains(@name,"[shipping_line_name]")]';
+        $routeSelect = $template.'//select[contains(@name,"[shipping_rate_id]")]';
+        $this->assertEquals(1, $xpath->query($lineSelect.'/option[@value="'.$lineName.'"]')->length);
+        $this->assertEquals(0, $xpath->query($lineSelect.'/option[@value="'.$noRates->shipping_line_name.'"]')->length);
+        $this->assertEquals(0, $xpath->query($lineSelect.'/option[@value="'.$inactive->shipping_line_name.'"]')->length);
+        $this->assertEquals(1, $xpath->query($routeSelect.'[@disabled and @data-trip-searchable]')->length);
+        foreach ([$first, $second, $van] as $rate) {
+            $option = $xpath->query($routeSelect.'/option[@value="'.$rate->id.'"]')->item(0);
+            $this->assertNotNull($option);
+            $this->assertEquals($lineName, $option->getAttribute('data-line'));
+            $this->assertEquals($rate->shippine_rate, $option->getAttribute('data-amount'));
+            $this->assertStringStartsWith('Batangas → Calapan', trim($option->textContent));
+            $this->assertStringContainsString('#'.$rate->id, $option->textContent);
+        }
+        $this->assertEquals('Batangas → Puerto Galera', trim($xpath->query($routeSelect.'/option[@value="'.$other->id.'"]')->item(0)->textContent));
+        $payload['costs'] = [['cost_code' => $this->costCode('RORO_COST')->id, 'shipping_line_name' => $lineName, 'shipping_rate_id' => $second->id, 'cost_amount' => 1, 'remarks' => 'RORO selected rate']];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $cost = $trip->costs()->firstOrFail();
+        $this->assertEquals($second->id, $cost->shipping_rate_id);
+        $this->assertEquals(1500, $cost->nonreleased_amount);
+        $response = $this->get(route('trips.show', $trip))->assertOk();
+        @$document->loadHTML('<?xml encoding="UTF-8">'.$response->getContent());
+        $xpath = new \DOMXPath($document);
+        $editorRow = '//section[@data-trip-section="costs"]//div[@data-trip-row][not(ancestor::template)]';
+        $this->assertEquals(1, $xpath->query($editorRow.'//select[contains(@name,"[shipping_line_name]")]/option[@value="'.$lineName.'" and @selected]')->length);
+        $this->assertEquals(1, $xpath->query($editorRow.'//select[contains(@name,"[shipping_rate_id]")]/option[@value="'.$second->id.'" and @selected and not(@disabled)]')->length);
+        $this->assertEquals(1, $xpath->query($editorRow.'//input[contains(@name,"[cost_amount]") and @readonly and @value="1500.00"]')->length);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0]['id'] = $cost->id;
+        $payload['costs'][0]['shipping_line_name'] = $otherLine;
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.shipping_rate_id');
+        $payload['costs'][0]['shipping_rate_id'] = $other->id;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(1, $trip->costs()->count());
+        $this->assertEquals($other->id, $cost->fresh()->shipping_rate_id);
+        $this->assertEquals(800, $cost->fresh()->nonreleased_amount);
+        $payload['version'] = $trip->fresh()->version;
+        $payload['costs'][0]['shipping_line_name'] = $noRates->shipping_line_name;
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.shipping_line_name');
     }
 
     private function payload(): array

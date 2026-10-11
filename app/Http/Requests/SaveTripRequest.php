@@ -62,7 +62,7 @@ class SaveTripRequest extends FormRequest
             'costs.*.costgroup' => 'nullable|string|max:100',
             'costs.*.cost_code' => ['nullable', 'required_without:costs.*.fuel_purchase_id', 'integer', $active('other_costs')],
             'costs.*.shipping_rate_id' => ['nullable', 'integer', $active('shipping_rates')],
-            'costs.*.shipping_line_name' => ['nullable', 'string', $active('shipping_lines', 'shipping_line_name')],
+            'costs.*.shipping_line_name' => ['nullable', 'string', $active('shipping_rates', 'shipping_line_name')],
             'costs.*.cost_amount' => 'sometimes|'.$amount,
             'costs.*.liters_required' => 'nullable|numeric|min:0|max:999999.99|decimal:0,2',
             'costs.*.price_per_liter' => 'nullable|numeric|min:0|max:999999.99|decimal:0,2',
