@@ -20,11 +20,12 @@
 <div class="table-wrap"><table class="access-table"><thead><tr>@foreach(['ID','Trip ID','Trip number','Van','Plate','Driver','Origin','Destination','Type','Distance (km)','Cost','Status','Created','Actions'] as $label)<th>{{ $label }}</th>@endforeach</tr></thead><tbody>
 @forelse($trips as $trip)
 <tr><td>{{ $trip->id }}</td><td>{{ $trip->trip_id }}</td><td>{{ $trip->trip_no ?: 'Draft' }}</td><td>{{ $trip->van_number ?: '—' }}</td><td>{{ $trip->plate_number ?: '—' }}</td><td>@foreach($trip->personnels->where('designation','Driver') as $person){{ $employees->get($person->employee_id)?->first_name }} {{ $employees->get($person->employee_id)?->last_name }}@if(!$loop->last), @endif @endforeach</td><td>{{ $trip->trip_route_origin }}</td><td>{{ $trip->trip_route_destination }}</td><td>{{ $trip->trip_type }}</td><td>{{ number_format($trip->total_distance,2) }}</td><td>{{ number_format($trip->total_cost,2) }}</td><td><span class="status-badge trip-status trip-status-{{ strtolower($trip->current_status) }}">{{ $trip->current_status }}</span></td><td>{{ $trip->created_at->format('M d, Y H:i') }}</td><td>
+<div class="trip-table-actions">
 <a class="table-action trip-action {{ $trip->current_status==='Open' && auth()->user()->hasPermission('trips.update') ? 'trip-action-edit' : 'trip-action-view' }}" href="{{ route('trips.show',$trip) }}">{{ $trip->current_status==='Open' && auth()->user()->hasPermission('trips.update') ? 'Edit Trip' : 'View Trip' }}</a>
 @if($trip->current_status==='Open' && auth()->user()->hasPermission('trips.dispatch'))<form method="POST" action="{{ route('trips.dispatch',$trip) }}" data-trip-action data-trip-operation="dispatch" data-confirm>@csrf<button class="table-action trip-action trip-action-dispatch">Dispatch Truck</button></form>@endif
 @if($trip->current_status==='Dispatched' && auth()->user()->hasPermission('trips.complete'))<form method="POST" action="{{ route('trips.complete',$trip) }}" data-trip-action data-trip-operation="complete" data-confirm>@csrf<button class="table-action trip-action trip-action-complete">Complete Trip</button></form>@endif
 @if(in_array($trip->current_status,['Dispatched','Completed']))<a class="table-action trip-action trip-action-print" href="{{ route('trips.print',$trip) }}" target="_blank" rel="noopener">Print Trip</a>@endif
-</td></tr>
+</div></td></tr>
 @empty<tr><td colspan="14" class="empty-table">No trips found.</td></tr>@endforelse
 </tbody></table></div>{{ $trips->links() }}
 </x-card>
