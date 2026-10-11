@@ -4,6 +4,11 @@
     $userName = $user?->name ?? 'Administrator';
     $username = $user?->username ?? 'administrator';
     $roleLabel = $user?->roles->pluck('name')->join(', ') ?: 'No role assigned';
+    $maintenanceAlerts = collect();
+    if ($user?->hasPermission('maintenances.view')) {
+        $maintenanceAlerts = app(\App\Services\MaintenanceAlertService::class)->all();
+    }
+    $maintenanceAlertCount = $maintenanceAlerts->count();
 @endphp
 
 <header class="topbar">
@@ -23,15 +28,20 @@
         </label>
 
         <div class="dropdown" data-dropdown>
-            <button type="button" class="icon-button notification-button" data-dropdown-toggle aria-label="Notifications" aria-expanded="false">
-                <x-icon name="bell" :size="21" /><span class="notification-dot"></span>
+            <button type="button" class="icon-button notification-button" data-dropdown-toggle aria-label="Notifications{{ $maintenanceAlertCount ? ' — '.$maintenanceAlertCount.' active maintenance alerts' : '' }}" aria-expanded="false">
+                <x-icon name="bell" :size="21" />@if($maintenanceAlertCount)<span class="notification-dot"></span>@endif
             </button>
             <div class="dropdown-menu notification-menu" data-dropdown-menu>
-                <div class="dropdown-heading"><strong>Notifications</strong><span>3 new</span></div>
-                <a href="#"><span class="activity-dot"></span><span><strong>Maintenance reminder</strong><small>Truck FL-204 is due for service &middot; 8 min ago</small></span></a>
-                <a href="#"><span class="activity-dot"></span><span><strong>Trip dispatched</strong><small>Trip TR-1087 left the main depot &middot; 24 min ago</small></span></a>
-                <a href="#"><span class="activity-dot muted"></span><span><strong>License renewal</strong><small>Two driver licenses expire this month</small></span></a>
-                <button type="button" class="dropdown-footer">Mark all as read</button>
+                <div class="dropdown-heading"><strong>Maintenance Alerts</strong><span>{{ $maintenanceAlertCount }} active</span></div>
+                @forelse($maintenanceAlerts->take(5) as $alert)
+                    <a href="{{ route('maintenances.show', $alert) }}">
+                        <span class="activity-dot {{ $alert->current_status === 'warning' ? 'warning' : 'violation' }}"></span>
+                        <span><strong>Maintenance {{ $alert->current_status }}</strong><small>{{ $alert->vehicle->plate_number }} · {{ $alert->policy->maintenance_code }}<br>{{ $alert->remaining() }}</small></span>
+                    </a>
+                @empty
+                    <div class="notification-empty"><x-icon name="maintenance" :size="20" /><span><strong>No active alerts</strong><small>All vehicle maintenance is within its normal threshold.</small></span></div>
+                @endforelse
+                @if($user?->hasPermission('maintenances.view'))<a href="{{ route('notifications.index') }}" class="dropdown-footer">View all maintenance alerts</a>@endif
             </div>
         </div>
 

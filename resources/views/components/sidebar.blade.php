@@ -6,6 +6,7 @@
             ['label' => 'Drivers', 'icon' => 'drivers'],
             ['label' => 'Trips', 'icon' => 'trips'],
             ['label' => 'Maintenance', 'icon' => 'maintenance', 'route' => 'maintenances.index', 'permission' => 'maintenances.view'],
+            ['label' => 'Notifications', 'icon' => 'bell', 'route' => 'notifications.index', 'permission' => 'maintenances.view'],
         ],
         'Trip Maintenance' => [
             ['label' => 'Clients', 'icon' => 'user', 'route' => 'clients.index', 'permission' => 'clients.view'],

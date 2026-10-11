@@ -20,6 +20,7 @@ use App\Http\Controllers\VehicleStatusController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\VehicleMaintenanceController;
 use App\Http\Controllers\MaintenanceController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\TripRateController;
 use App\Http\Controllers\PersonnelTypeController;
 use App\Http\Controllers\PersonnelController;
@@ -190,6 +191,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/maintenances/{maintenance}', [MaintenanceController::class, 'show'])->middleware('permission:maintenances.view')->name('maintenances.show');
     Route::post('/maintenances/{maintenance}/renew', [MaintenanceController::class, 'renew'])->middleware('permission:maintenances.update')->name('maintenances.renew');
     Route::delete('/maintenances/{maintenance}', [MaintenanceController::class, 'destroy'])->middleware('permission:maintenances.delete')->name('maintenances.destroy');
+    Route::get('/notifications', [NotificationController::class, 'index'])->middleware('permission:maintenances.view')->name('notifications.index');
     Route::get('/personnel-types', [PersonnelTypeController::class, 'index'])->middleware('permission:personnel-types.view')->name('personnel-types.index');
     Route::get('/personnel-types/create', [PersonnelTypeController::class, 'create'])->middleware('permission:personnel-types.create')->name('personnel-types.create');
     Route::post('/personnel-types', [PersonnelTypeController::class, 'store'])->middleware('permission:personnel-types.create')->name('personnel-types.store');
