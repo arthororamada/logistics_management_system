@@ -33,7 +33,6 @@
         <div class="form-group"><label for="payment_type">Payment Type</label><select data-trip-searchable class="form-select" id="payment_type" name="payment_type"><option value="">Select payment type</option>@foreach($payments as $payment)<option value="{{ $payment->payment_type }}" @selected(old('payment_type',$trip->payment_type)===$payment->payment_type)>{{ $payment->payment_type }}</option>@endforeach</select></div>
     
         <div class="form-group"><label for="tariff_id">Trip Rate</label><select data-trip-searchable class="form-select" id="tariff_id" name="tariff_id" data-trip-rate><option value="">Select matching Trip Rate</option>@foreach($tripRates as $rate)<option value="{{ $rate->id }}" data-rate="{{ json_encode($rate->only(['trip_number','trip_type','payment_type'])) }}" data-personnel-rates="{{ json_encode($rate->personnelRatesForDesignations($designations)) }}" @selected(old('tariff_id',$trip->tariff_id)==$rate->id)>#{{ $rate->id }} &middot; {{ $rate->trip_number }} &middot; {{ $rate->client_code }} &middot; {{ $rate->vehicle_group }} &middot; {{ $rate->trip_type }} &middot; {{ $rate->payment_type }}</option>@endforeach</select></div>
-        <p>Personnel salaries use the selected Trip Rate and designation, including applicable extra-drop rates. Funds remain unreleased until entered under Disbursement Information.</p>
             </div>
     </x-card>
     <x-card title="Vehicle" data-trip-section="vehicle" :collapsible="true" :collapsed="true" id="trip-section-vehicle">
@@ -54,19 +53,17 @@
         </div>
         <button type="button" class="button button-outline" data-trip-add="{{ $collection }}">Add {{ $title }}</button>
         <template id="trip-template-{{ $collection }}">@include('trips.row',['collection'=>$collection,'row'=>[],'index'=>'__INDEX__'])</template>
-        @if($collection==='segments')<p>Saved total distance: {{ number_format($trip->total_distance,2) }} km. Trip origin and destination are derived from the first and last route segments.</p>@endif
+        @if($collection==='segments')<p>Saved total distance: {{ number_format($trip->total_distance,2) }} km.</p>@endif
     </x-card>
     @endforeach
     <x-card title="Disbursement Information (Cash Released / GCash)" data-trip-section="disbursements" :collapsible="true" :collapsed="true" id="trip-section-disbursements">
         <div class="form-group"><label for="gcash_number">GCash number</label><input class="form-input" id="gcash_number" name="gcash_number" value="{{ old('gcash_number',$trip->gcash_number) }}" maxlength="150"></div>
-        <p>Enter the cumulative amount released to each employee by cash or GCash. Previously released funds cannot be reduced or removed through this form.</p>
         @php($savedDisbursements = $trip->personnels->map(fn($p) => ['employee_id'=>$p->employee_id,'cash_released'=>$p->cash_released])->values()->all())
         <div data-trip-disbursements data-saved-releases="{{ json_encode($savedDisbursements) }}">
             @foreach(old('disbursements',$savedDisbursements) as $release)
                 @include('trips.disbursement-row',['release'=>$release,'index'=>$loop->index])
             @endforeach
         </div>
-        <p data-disbursement-empty @if(count($savedDisbursements)) hidden @endif>Add personnel to manage disbursements.</p>
         <template id="trip-disbursement-template">@include('trips.disbursement-row',['release'=>[],'index'=>'__INDEX__'])</template>
     </x-card>
     <div class="form-actions"><button class="button button-primary" type="submit">Save Trip</button>@if(auth()->user()->hasPermission('trips.dispatch'))<button class="button button-primary trip-action trip-action-dispatch" type="submit" name="intent" value="dispatch">Save &amp; Dispatch Truck</button>@endif</div>

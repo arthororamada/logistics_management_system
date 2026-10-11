@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Trips')
 @section('content')
-<section class="page-heading trip-page-heading"><div><p class="eyebrow">Fleet Operations</p><h2>Trips</h2><p>Continue open drafts, dispatch trucks, and review completed trips.</p></div>
+<section class="page-heading trip-page-heading"><div><p class="eyebrow">Fleet Operations</p><h2>Trips</h2></div>
 @if(auth()->user()->hasPermission('trips.create'))
 <form method="POST" action="{{ route('trips.store') }}" data-trip-action>@csrf<input type="hidden" name="creation_key" value="{{ $creationKey }}"><button class="button button-primary">Add New Trip</button></form>
 @endif</section>

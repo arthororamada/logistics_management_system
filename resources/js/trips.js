@@ -77,7 +77,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.querySelector('[data-disbursement-balance]').value = Math.max(0, salary - Number(released.value)).toFixed(2);
                 releasesContainer.append(fragment);
             });
-            editor.querySelector('[data-disbursement-empty]').hidden = assigned.size > 0;
         };
         const syncPersonnelSalaries = () => {
             const rates = JSON.parse(rateSelect.selectedOptions[0]?.dataset.personnelRates || '{}');
