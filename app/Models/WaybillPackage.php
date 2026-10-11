@@ -15,7 +15,7 @@ class WaybillPackage extends Model
     protected $casts = [
         'pickup_date' => 'datetime', 'handover_date' => 'datetime',
         'delivery_min_time' => 'datetime', 'delivery_max_time' => 'datetime',
-        'is_priority' => 'boolean', 'is_deleted' => 'boolean',
+        'is_priority' => 'boolean', 'is_deleted' => 'datetime',
     ];
 
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
@@ -25,4 +25,6 @@ class WaybillPackage extends Model
     public function primaryItem(): BelongsTo { return $this->belongsTo(Item::class, 'item_id'); }
 
     public function items(): HasMany { return $this->hasMany(Item::class, 'waybill_number', 'waybill_number'); }
+
+    public function statusLogs(): HasMany { return $this->hasMany(StatusLog::class, 'waybill_number', 'waybill_number'); }
 }

@@ -105,18 +105,29 @@
     </div>
 </x-card>
 
-<x-card title="Record Activity" subtitle="Available audit information for this waybill." class="waybill-activity-card">
+<x-card title="Record Activity" subtitle="{{ $package->statusLogs->count() }} status update(s) recorded for this waybill." class="waybill-activity-card">
     <div class="table-wrap">
         <table class="access-table">
-            <thead><tr><th>Date</th><th>Event</th><th>Status</th><th>Reference</th></tr></thead>
+            <thead><tr><th>Date</th><th>Status</th><th>Reference</th><th>Remarks</th><th>Updated By</th></tr></thead>
             <tbody>
-                <tr><td>{{ $package->created_at?->format('M d, Y H:i:s') ?: '—' }}</td><td>Waybill created</td><td><x-status-badge :status="$package->package_status" /></td><td>{{ $package->waybill_number }}</td></tr>
-                @if($package->updated_at && !$package->updated_at->equalTo($package->created_at))
-                    <tr><td>{{ $package->updated_at->format('M d, Y H:i:s') }}</td><td>Waybill updated</td><td><x-status-badge :status="$package->package_status" /></td><td>{{ $package->waybill_number }}</td></tr>
-                @endif
-                @if($package->handover_date)
-                    <tr><td>{{ $package->handover_date->format('M d, Y H:i:s') }}</td><td>Package handed over</td><td><x-status-badge :status="$package->package_status" /></td><td>{{ $package->package_reference_1 ?: $package->waybill_number }}</td></tr>
-                @endif
+                @forelse($package->statusLogs as $statusLog)
+                    <tr>
+                        <td>{{ $statusLog->created_at?->format('M d, Y H:i:s') ?: '—' }}</td>
+                        <td><x-status-badge :status="$statusLog->status" /></td>
+                        <td>{{ $statusLog->reference ?: '—' }}</td>
+                        <td>{{ $statusLog->comment ?: '—' }}</td>
+                        <td>
+                            @if($statusLog->updatedBy)
+                                {{ $statusLog->updatedBy->name }}
+                                @if($statusLog->updatedBy->username) ({{ $statusLog->updatedBy->username }}) @endif
+                            @else
+                                —
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="5" class="empty-table">No status activity has been recorded for this waybill.</td></tr>
+                @endforelse
             </tbody>
         </table>
     </div>

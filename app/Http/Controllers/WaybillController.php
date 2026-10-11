@@ -105,7 +105,7 @@ class WaybillController extends Controller
             $packages = new LengthAwarePaginator([], 0, $perPage, 1, ['path' => $request->url(), 'query' => $request->query()]);
         } else {
             $packages = WaybillPackage::with(['client', 'seller', 'items'])
-                ->where('is_deleted', false)
+                ->whereNull('is_deleted')
                 ->when($filters['search'] ?? null, fn ($query, $search) => $query->where(fn ($builder) => $builder
                     ->where('waybill_number', 'like', "%{$search}%")
                     ->orWhere('order_number', 'like', "%{$search}%")
@@ -143,7 +143,16 @@ class WaybillController extends Controller
     public function show(WaybillPackage $package): View
     {
         abort_if($package->is_deleted, 404);
-        $package->load(['client', 'seller', 'items' => fn ($query) => $query->where('is_deleted', false)->orderBy('id')]);
+        $package->load([
+            'client',
+            'seller',
+            'items' => fn ($query) => $query->whereNull('is_deleted')->orderBy('id'),
+            'statusLogs' => fn ($query) => $query
+                ->with('updatedBy')
+                ->whereNull('is_deleted')
+                ->orderBy('created_at')
+                ->orderBy('id'),
+        ]);
 
         return view('waybills.show', compact('package'));
     }
@@ -172,6 +181,7 @@ class WaybillController extends Controller
             $seller = $this->resolveSeller($sellerData);
             $waybillNumber = $this->nextWaybillNumber((int) $validated['client_id']);
             $package = WaybillPackage::create([...$validated, 'waybill_number' => $waybillNumber, 'package_status' => 'for_pickup', 'seller_id' => $seller->id, 'created_by' => $userId, 'updated_by' => $userId]);
+            $this->createInitialStatusLog($package, $userId);
             $firstItem = null;
             foreach ($items as $itemData) {
                 $item = $package->items()->create([...$itemData, 'created_by' => $userId, 'updated_by' => $userId]);
@@ -380,6 +390,7 @@ class WaybillController extends Controller
                 $packageData['package_status'] = $packageData['package_status'] ?: 'for_pickup';
                 $packageData['is_priority'] = $packageData['is_priority'] ?? false;
                 $package = WaybillPackage::create([...$packageData, 'seller_id' => $clientId, 'created_by' => $userId, 'updated_by' => $userId]);
+                $this->createInitialStatusLog($package, $userId);
                 $firstItem = null;
                 foreach ($rows as $row) {
                     $itemData = array_intersect_key($row, array_flip(self::ITEM_FIELDS));
@@ -392,6 +403,15 @@ class WaybillController extends Controller
         });
 
         return $exportRows;
+    }
+
+    private function createInitialStatusLog(WaybillPackage $package, int $userId): void
+    {
+        $package->statusLogs()->create([
+            'status' => $package->package_status,
+            'created_by' => $userId,
+            'updated_by' => $userId,
+        ]);
     }
 
     private function rules(): array

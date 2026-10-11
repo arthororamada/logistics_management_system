@@ -38,6 +38,7 @@
         ],
         'System' => [
             ['label' => 'Users', 'icon' => 'user', 'route' => 'users.index', 'permission' => 'users.view'],
+            ['label' => 'Locations', 'icon' => 'location', 'route' => 'locations.index', 'permission' => 'locations.view'],
             ['label' => 'Roles', 'icon' => 'shield', 'route' => 'roles.index', 'permission' => 'roles.view'],
             ['label' => 'Permissions', 'icon' => 'key', 'route' => 'permissions.index', 'permission' => 'permissions.view'],
             ['label' => 'Settings', 'icon' => 'settings'],

@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\VehicleGroupController;
 use App\Http\Controllers\VehicleTypeController;
@@ -78,6 +79,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/users/{user}/edit', [UserController::class, 'edit'])->middleware('permission:users.update')->name('users.edit');
     Route::put('/users/{user}', [UserController::class, 'update'])->middleware('permission:users.update')->name('users.update');
     Route::delete('/users/{user}', [UserController::class, 'destroy'])->middleware('permission:users.delete')->name('users.destroy');
+
+    Route::get('/locations', [LocationController::class, 'index'])->middleware('permission:locations.view')->name('locations.index');
+    Route::get('/locations/create', [LocationController::class, 'create'])->middleware('permission:locations.create')->name('locations.create');
+    Route::post('/locations', [LocationController::class, 'store'])->middleware('permission:locations.create')->name('locations.store');
+    Route::get('/locations/{location}/edit', [LocationController::class, 'edit'])->middleware('permission:locations.update')->name('locations.edit');
+    Route::put('/locations/{location}', [LocationController::class, 'update'])->middleware('permission:locations.update')->name('locations.update');
+    Route::delete('/locations/{location}', [LocationController::class, 'destroy'])->middleware('permission:locations.delete')->name('locations.destroy');
 
     Route::get('/roles', [RoleController::class, 'index'])->middleware('permission:roles.view')->name('roles.index');
     Route::get('/roles/create', [RoleController::class, 'create'])->middleware('permission:roles.create')->name('roles.create');
