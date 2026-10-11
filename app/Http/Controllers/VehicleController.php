@@ -105,7 +105,25 @@ class VehicleController extends Controller
 
     public function edit(Vehicle $vehicle): View { return view('vehicles.edit', $this->formData($vehicle)); }
 
-    public function show(Vehicle $vehicle): View { return view('vehicles.show', compact('vehicle')); }
+    public function show(Vehicle $vehicle): View
+    {
+        $maintenances = $vehicle->maintenances()
+            ->with('policy:id,maintenance_code,maintenance_description')
+            ->where('is_active', true)
+            ->orderByDesc('updated_at')
+            ->get();
+        $maintenances->each(function ($maintenance) use ($vehicle) {
+            $maintenance->setRelation('vehicle', $vehicle);
+            $maintenance->setAttribute('current_status', $maintenance->status());
+        });
+        $maintenanceCounts = [
+            'normal' => $maintenances->where('current_status', 'normal')->count(),
+            'warning' => $maintenances->where('current_status', 'warning')->count(),
+            'violation' => $maintenances->where('current_status', 'violation')->count(),
+        ];
+
+        return view('vehicles.show', compact('vehicle', 'maintenances', 'maintenanceCounts'));
+    }
 
     public function update(Request $request, Vehicle $vehicle): RedirectResponse
     {

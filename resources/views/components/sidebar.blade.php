@@ -5,7 +5,7 @@
             ['label' => 'Vehicles', 'icon' => 'vehicles', 'route' => 'vehicles.index', 'permission' => 'vehicles.view'],
             ['label' => 'Drivers', 'icon' => 'drivers'],
             ['label' => 'Trips', 'icon' => 'trips'],
-            ['label' => 'Maintenance', 'icon' => 'maintenance'],
+            ['label' => 'Maintenance', 'icon' => 'maintenance', 'route' => 'maintenances.index', 'permission' => 'maintenances.view'],
         ],
         'Trip Maintenance' => [
             ['label' => 'Clients', 'icon' => 'user', 'route' => 'clients.index', 'permission' => 'clients.view'],
@@ -30,6 +30,7 @@
             ['label' => 'Vehicle Types', 'icon' => 'vehicles', 'route' => 'vehicle-types.index', 'permission' => 'vehicle-types.view'],
             ['label' => 'Vehicle Makes', 'icon' => 'vehicles', 'route' => 'vehicle-makes.index', 'permission' => 'vehicle-makes.view'],
             ['label' => 'Vehicle Statuses', 'icon' => 'vehicles', 'route' => 'vehicle-statuses.index', 'permission' => 'vehicle-statuses.view'],
+            ['label' => 'Vehicle Maintenance', 'icon' => 'maintenance', 'route' => 'vehicle-maintenances.index', 'permission' => 'vehicle-maintenances.view'],
         ],
         'System' => [
             ['label' => 'Users', 'icon' => 'user', 'route' => 'users.index', 'permission' => 'users.view'],

@@ -18,6 +18,8 @@ use App\Http\Controllers\ShippingRateController;
 use App\Http\Controllers\TripPaymentController;
 use App\Http\Controllers\VehicleStatusController;
 use App\Http\Controllers\VehicleController;
+use App\Http\Controllers\VehicleMaintenanceController;
+use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\TripRateController;
 use App\Http\Controllers\PersonnelTypeController;
 use App\Http\Controllers\PersonnelController;
@@ -172,6 +174,22 @@ Route::middleware('auth')->group(function () {
     Route::get('/vehicle-statuses/{vehicleStatus}/edit', [VehicleStatusController::class, 'edit'])->middleware('permission:vehicle-statuses.update')->name('vehicle-statuses.edit');
     Route::put('/vehicle-statuses/{vehicleStatus}', [VehicleStatusController::class, 'update'])->middleware('permission:vehicle-statuses.update')->name('vehicle-statuses.update');
     Route::delete('/vehicle-statuses/{vehicleStatus}', [VehicleStatusController::class, 'destroy'])->middleware('permission:vehicle-statuses.delete')->name('vehicle-statuses.destroy');
+
+    Route::get('/vehicle-maintenances/import-template', [VehicleMaintenanceController::class, 'template'])->middleware('permission:vehicle-maintenances.create')->name('vehicle-maintenances.import-template');
+    Route::post('/vehicle-maintenances/import', [VehicleMaintenanceController::class, 'import'])->middleware('permission:vehicle-maintenances.create')->name('vehicle-maintenances.import');
+    Route::get('/vehicle-maintenances', [VehicleMaintenanceController::class, 'index'])->middleware('permission:vehicle-maintenances.view')->name('vehicle-maintenances.index');
+    Route::get('/vehicle-maintenances/create', [VehicleMaintenanceController::class, 'create'])->middleware('permission:vehicle-maintenances.create')->name('vehicle-maintenances.create');
+    Route::post('/vehicle-maintenances', [VehicleMaintenanceController::class, 'store'])->middleware('permission:vehicle-maintenances.create')->name('vehicle-maintenances.store');
+    Route::get('/vehicle-maintenances/{vehicleMaintenance}/edit', [VehicleMaintenanceController::class, 'edit'])->middleware('permission:vehicle-maintenances.update')->name('vehicle-maintenances.edit');
+    Route::put('/vehicle-maintenances/{vehicleMaintenance}', [VehicleMaintenanceController::class, 'update'])->middleware('permission:vehicle-maintenances.update')->name('vehicle-maintenances.update');
+    Route::delete('/vehicle-maintenances/{vehicleMaintenance}', [VehicleMaintenanceController::class, 'destroy'])->middleware('permission:vehicle-maintenances.delete')->name('vehicle-maintenances.destroy');
+
+    Route::get('/maintenances', [MaintenanceController::class, 'index'])->middleware('permission:maintenances.view')->name('maintenances.index');
+    Route::get('/maintenances/create', [MaintenanceController::class, 'create'])->middleware('permission:maintenances.create')->name('maintenances.create');
+    Route::post('/maintenances', [MaintenanceController::class, 'store'])->middleware('permission:maintenances.create')->name('maintenances.store');
+    Route::get('/maintenances/{maintenance}', [MaintenanceController::class, 'show'])->middleware('permission:maintenances.view')->name('maintenances.show');
+    Route::post('/maintenances/{maintenance}/renew', [MaintenanceController::class, 'renew'])->middleware('permission:maintenances.update')->name('maintenances.renew');
+    Route::delete('/maintenances/{maintenance}', [MaintenanceController::class, 'destroy'])->middleware('permission:maintenances.delete')->name('maintenances.destroy');
     Route::get('/personnel-types', [PersonnelTypeController::class, 'index'])->middleware('permission:personnel-types.view')->name('personnel-types.index');
     Route::get('/personnel-types/create', [PersonnelTypeController::class, 'create'])->middleware('permission:personnel-types.create')->name('personnel-types.create');
     Route::post('/personnel-types', [PersonnelTypeController::class, 'store'])->middleware('permission:personnel-types.create')->name('personnel-types.store');

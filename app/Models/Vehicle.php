@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Vehicle extends Model
 {
@@ -20,4 +21,9 @@ class Vehicle extends Model
         'year_model' => 'integer', 'sunsetting_year' => 'integer', 'date_acquired' => 'date',
         'fuel_capacity' => 'decimal:2', 'fuel_usage_per_kilometer' => 'decimal:3', 'cargo_capacity' => 'decimal:2', 'odometer' => 'decimal:2',
     ];
+
+    public function maintenances(): HasMany
+    {
+        return $this->hasMany(Maintenance::class);
+    }
 }
