@@ -20,7 +20,7 @@
 @if($errors->any())<div class="alert alert-error" role="alert">@foreach($errors->all() as $error)<div>{{ $error }}</div>@endforeach</div>@endif
 <div class="trip-workspace {{ $trip->current_status==='Open' && auth()->user()->hasPermission('trips.update') ? '' : 'trip-readonly' }}">
 @if($trip->current_status==='Open' && auth()->user()->hasPermission('trips.update'))
-<form method="POST" action="{{ route('trips.update',$trip) }}" id="trip-form" data-trip-editor data-dispatch-url="{{ route('trips.dispatch',$trip) }}">
+<form method="POST" action="{{ route('trips.update',$trip) }}" id="trip-form" data-trip-editor data-availability-url="{{ route('trips.availability',$trip) }}" data-dispatch-url="{{ route('trips.dispatch',$trip) }}">
     @csrf @method('PUT')<input type="hidden" name="version" value="{{ $trip->version }}">
     <x-card title="General Trip Information" data-trip-section="general" :collapsible="true" :collapsed="true" id="trip-section-general">
         <div class="trip-form-grid">
@@ -36,7 +36,8 @@
             </div>
     </x-card>
     <x-card title="Vehicle" data-trip-section="vehicle" :collapsible="true" :collapsed="true" id="trip-section-vehicle">
-        <div class="form-group"><label for="vehicle_id">Van / vehicle</label><select data-trip-searchable class="form-select" name="vehicle_id" id="vehicle_id" data-trip-vehicle><option value="">Select vehicle</option>@foreach($vehicles as $vehicle)<option value="{{ $vehicle->id }}" data-vehicle="{{ json_encode($vehicle->only(['body_number','vehicle_group','plate_number','fuel_capacity','fuel_type','fuel_usage_per_kilometer','cargo_capacity','engine_number','chassi_number'])) }}" @selected(old('vehicle_id',$trip->vehicle_id)==$vehicle->id)>{{ $vehicle->body_number }} &middot; {{ $vehicle->plate_number }}</option>@endforeach</select></div>
+        <div class="form-group"><label for="vehicle_id">Van / vehicle</label><select data-trip-searchable class="form-select" name="vehicle_id" id="vehicle_id" data-trip-vehicle><option value="">Select vehicle</option>@foreach($vehicles as $vehicle)<option value="{{ $vehicle->id }}" data-vehicle="{{ json_encode($vehicle->only(['body_number','vehicle_group','plate_number','fuel_capacity','fuel_type','fuel_usage_per_kilometer','cargo_capacity','engine_number','chassi_number'])) }}" @disabled($assignmentAvailability['vehicles'][$vehicle->id] !== null) data-eligibility-reason="{{ $assignmentAvailability['vehicles'][$vehicle->id] }}" @selected(old('vehicle_id',$trip->vehicle_id)==$vehicle->id)>{{ $vehicle->body_number }} &middot; {{ $vehicle->plate_number }}{{ $assignmentAvailability['vehicles'][$vehicle->id] ? ' ? '.$assignmentAvailability['vehicles'][$vehicle->id] : '' }}</option>@endforeach</select></div>
+        <p>Only Running vehicles and Active personnel available outside dispatched trips can be selected. Availability is checked again before saving.</p>
         <div class="trip-form-grid" data-vehicle-fields>
             @foreach(['body_number'=>'Van number','vehicle_group'=>'Vehicle group','plate_number'=>'Plate number','fuel_capacity'=>'Fuel capacity (L)','fuel_type'=>'Fuel type','fuel_usage_per_kilometer'=>'Fuel usage (L/km)','cargo_capacity'=>'Cargo capacity','engine_number'=>'Engine number','chassi_number'=>'Chassis number'] as $field=>$label)
             <div class="form-group"><label>{{ $label }}</label><input class="form-input" data-vehicle-field="{{ $field }}" readonly></div>

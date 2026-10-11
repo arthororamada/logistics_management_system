@@ -6,7 +6,7 @@
 @else
 @php
     $selects = match($collection) {
-        'personnels'=>['employee_id'=>[$employees->where('is_active',true),'id','Employee']],
+        'personnels'=>['employee_id'=>[$employees,'id','Employee']],
         'segments'=>['origin_id'=>[$locations,'id','Origin reference'],'destination_id'=>[$locations,'id','Destination reference']],
         'fuel_purchases'=>['fuel_supplier'=>[$suppliers->where('is_active',true),'id','Fuel supplier']],
     };
@@ -15,7 +15,7 @@
 <div class="form-group"><label>{{ $label }}<select data-trip-searchable class="form-select" name="{{ $collection }}[{{ $index }}][{{ $field }}]" @required($field!=='shipping_rate_id')><option value="">Select</option>
 @foreach($records as $record)
 @php($text = match($field) { 'employee_id'=>$record->employee_id.' · '.$record->first_name.' '.$record->last_name.' · '.$record->personnel_type, 'origin_id','destination_id'=>implode(', ',array_filter([$record->province,$record->city,$record->brgy])), 'fuel_supplier'=>$record->fuel_supplier_name, 'cost_code'=>$record->cost_code.' · '.$record->cost_name, 'shipping_rate_id'=>$record->shipping_line_name.' · '.$record->port_origin.' → '.$record->port_destination.' · '.$record->vehicle_type.' · '.$record->shippine_rate })
-<option value="{{ $record->$value }}" @selected(($row[$field]??'')==$record->$value) @if($field==='fuel_supplier') data-price="{{ $record->price_per_liter }}" @elseif($field==='cost_code') data-cash="{{ $record->is_cash_release ? 1 : 0 }}" @endif>{{ $text }}</option>
+<option value="{{ $record->$value }}" @if($field==='employee_id') @disabled($assignmentAvailability['personnels'][$record->id] !== null) data-eligibility-reason="{{ $assignmentAvailability['personnels'][$record->id] }}" @endif @selected(($row[$field]??'')==$record->$value) @if($field==='fuel_supplier') data-price="{{ $record->price_per_liter }}" @elseif($field==='cost_code') data-cash="{{ $record->is_cash_release ? 1 : 0 }}" @endif>{{ $text }}@if($field==='employee_id' && $assignmentAvailability['personnels'][$record->id]) ? {{ $assignmentAvailability['personnels'][$record->id] }}@endif</option>
 @endforeach</select></label></div>
 @endforeach
 @if($collection==='personnels')<div class="form-group"><label>Designation<select data-trip-searchable class="form-select" name="personnels[{{ $index }}][designation]" required><option value="">Select designation</option>@foreach($designations as $designation)<option value="{{ $designation }}" @selected(strcasecmp($row['designation']??'',$designation)===0)>{{ $designation }}</option>@endforeach</select></label><small data-personnel-rate-error hidden>No rate is configured for this position in the selected Trip Rate.</small></div>@endif

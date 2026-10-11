@@ -3,6 +3,7 @@ import { enhanceTripSelects, refreshTripSelects, expandTripSection } from './tri
 import { notifications } from './notifications';
 import { createTripDialogs, withTripSubmissionLock, readTripResponse } from './trip-dialogs';
 import { syncTripCost } from './trip-costs';
+import { applyTripAvailability, readTripAvailability } from './trip-eligibility';
 
 document.addEventListener('DOMContentLoaded', () => {
     const dialogs = createTripDialogs(notifications);
@@ -45,6 +46,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const editor = document.querySelector('[data-trip-editor]');
     if (editor) {
+        const refreshAvailability = async () => {
+            const response = await fetch(editor.dataset.availabilityUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' }, cache: 'no-store' });
+            const availability = await readTripAvailability(response);
+            const reasons = [];
+            editor.querySelectorAll('[data-trip-vehicle], select[name$="[employee_id]"]').forEach((select) => {
+                const reason = applyTripAvailability(select, availability[select.hasAttribute('data-trip-vehicle') ? 'vehicles' : 'personnels']);
+                if (reason) reasons.push(reason);
+            });
+            editor.querySelectorAll('template').forEach((template) => {
+                template.content.querySelectorAll('select[name$="[employee_id]"]').forEach((select) => applyTripAvailability(select, availability.personnels));
+            });
+            refreshTripSelects(editor);
+            return reasons;
+        };
+        window.addEventListener('focus', () => { refreshAvailability().catch((error) => report(error.message)); });
         const collections = ['personnels', 'segments', 'fuel_purchases', 'costs', 'disbursements'];
         const rateSelect = editor.querySelector('[data-trip-rate]');
         const releasesContainer = editor.querySelector('[data-trip-disbursements]');
@@ -117,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         editor.addEventListener('change', (event) => {
             const field = event.target;
+            if (field.matches('[data-trip-vehicle], select[name$="[employee_id]"]')) field.setCustomValidity(field.selectedOptions[0]?.dataset.eligibilityReason || '');
             const row = field.closest('[data-trip-row]');
             if (row && field.name.endsWith('[fuel_supplier]')) row.querySelector('[name$="[price_per_liter]"]').value = field.selectedOptions[0]?.dataset.price ?? 0;
             if (row?.closest('[data-trip-collection="costs"]')) syncTripCost(row, field.name.match(/\[(\w+)\]$/)?.[1]);
@@ -161,6 +178,10 @@ document.addEventListener('DOMContentLoaded', () => {
             event.preventDefault();
             const dispatch = event.submitter?.value === 'dispatch';
             await withTripSubmissionLock(editor, async () => {
+                try {
+                    const reasons = await refreshAvailability();
+                    if (reasons.length) { await report([...new Set(reasons)].join(' ')); return; }
+                } catch (error) { await report(error.message); return; }
                 if (dispatch && !await dialogs.confirm('dispatch')) return;
                 const payload = Object.fromEntries(collections.map((name) => [name, []]));
                 for (const [name, value] of new FormData(editor)) {

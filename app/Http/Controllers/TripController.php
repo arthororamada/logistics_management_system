@@ -15,6 +15,7 @@ use App\Models\TripType;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\TripService;
+use App\Services\TripAssignmentEligibility;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -49,7 +50,11 @@ class TripController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate(['creation_key' => 'required|uuid']);
+        $data = $request->validate([
+            'creation_key' => 'required|uuid',
+            'vehicle_id' => 'prohibited',
+            'personnels' => 'prohibited',
+        ], ['prohibited' => 'Create an Open draft first, then save its assignments through the trip editor.']);
         $trip = DB::transaction(function () use ($data, $request) {
             DB::table('trips')->insertOrIgnore([
                 'trip_id' => 'TRIP-'.Str::ulid(), 'creation_key' => $data['creation_key'],
@@ -70,6 +75,7 @@ class TripController extends Controller
     {
         $this->authorizeTrip($request, $trip);
         $data = $this->documentData($trip) + [
+            'assignmentAvailability' => app(TripAssignmentEligibility::class)->availability($trip),
             'vehicles' => Vehicle::orderBy('body_number')->get(),
             'tripTypes' => TripType::where('is_active', true)->get(),
             'payments' => TripPayment::where('is_active', true)->get(),
@@ -97,13 +103,20 @@ class TripController extends Controller
         return view('trips.show', $data);
     }
 
+    public function availability(Request $request, Trip $trip, TripAssignmentEligibility $eligibility)
+    {
+        $this->authorizeTrip($request, $trip);
+
+        return response()->json($eligibility->availability($trip))->header('Cache-Control', 'no-store, private');
+    }
+
     public function update(SaveTripRequest $request, Trip $trip, TripService $service)
     {
         $this->authorizeTrip($request, $trip);
         DB::transaction(function () use ($request, $trip, $service) {
             $locked = Trip::whereKey($trip->id)->lockForUpdate()->firstOrFail();
             $service->save($locked, $request->validated(), $request->user()->id);
-        });
+        }, 3);
 
         return $this->success($request, $trip, 'Trip saved. Document and totals updated.');
     }
@@ -115,7 +128,8 @@ class TripController extends Controller
         $data = null;
         if ($request->has('version')) {
             abort_unless($request->user()->hasPermission('trips.update'), 403);
-            $data = $request->validate((new SaveTripRequest)->rules());
+            $saveRequest = new SaveTripRequest;
+            $data = $request->validate($saveRequest->rules(), $saveRequest->messages());
         }
         DB::transaction(function () use ($request, $trip, $service, $data, $reason) {
             $locked = Trip::whereKey($trip->id)->lockForUpdate()->firstOrFail();
@@ -123,7 +137,7 @@ class TripController extends Controller
                 $service->save($locked, $data, $request->user()->id);
             }
             $service->dispatch($locked, $request->user()->id, $reason);
-        });
+        }, 3);
 
         return $this->success($request, $trip, 'Truck dispatched. Trip is now read-only.');
     }

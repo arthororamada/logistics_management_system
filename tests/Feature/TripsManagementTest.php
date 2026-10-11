@@ -165,6 +165,7 @@ class TripsManagementTest extends TestCase
         $user->roles()->attach($role);
         $this->actingAs($user);
         $this->get(route('trips.show', $trip))->assertForbidden();
+        $this->getJson(route('trips.availability', $trip))->assertForbidden();
         $this->get(route('trips.print', $trip))->assertForbidden();
         $this->putJson(route('trips.update', $trip), $this->payload())->assertForbidden();
         $this->postJson(route('trips.dispatch', $trip))->assertForbidden();
@@ -777,12 +778,95 @@ class TripsManagementTest extends TestCase
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('costs.0.shipping_line_name');
     }
 
+    public function test_nonrunning_vehicles_and_every_inactive_person_are_rejected_on_save_and_dispatch(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $this->postJson(route('trips.store'), ['creation_key' => (string) Str::uuid(), 'vehicle_id' => $payload['vehicle_id'], 'personnels' => $payload['personnels']])
+            ->assertUnprocessable()->assertJsonValidationErrors(['vehicle_id', 'personnels']);
+        foreach (['Available', 'Maintenance', 'Inactive'] as $status) {
+            Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => $status]);
+            $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
+            $this->postJson(route('trips.dispatch', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
+        }
+        Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Running']);
+        $helper = Personnel::where('employee_id', 'like', 'HELP-%')->latest('id')->firstOrFail();
+        $payload['personnels'][] = ['employee_id' => $helper->id, 'designation' => 'Helper'];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $helper->update(['is_active' => false]);
+        $payload['version'] = $trip->fresh()->version;
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels.1.employee_id');
+        $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable()->assertJsonValidationErrors('personnels.1.employee_id');
+        $this->assertEquals('Open', $trip->fresh()->current_status);
+    }
+
+    public function test_saved_draft_rechecks_vehicle_status_on_dispatch_and_disables_ineligible_options(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Maintenance']);
+        Personnel::findOrFail($payload['personnels'][0]['employee_id'])->update(['is_active' => false]);
+        $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable()->assertJsonValidationErrors(['vehicle_id', 'personnels.0.employee_id']);
+        $response = $this->get(route('trips.show', $trip))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML('<?xml encoding="UTF-8">'.$response->getContent());
+        $xpath = new \DOMXPath($document);
+        $this->assertEquals(1, $xpath->query('//select[@name="vehicle_id"]/option[@value="'.$payload['vehicle_id'].'" and @disabled]')->length);
+        $this->assertEquals(1, $xpath->query('//select[@name="personnels[0][employee_id]"]/option[@value="'.$payload['personnels'][0]['employee_id'].'" and @disabled]')->length);
+        $this->assertEquals('Open', $trip->fresh()->current_status);
+    }
+
+    public function test_dispatched_assignments_block_saves_reassignments_and_stale_draft_dispatches(): void
+    {
+        $first = $this->draft();
+        $second = $this->draft();
+        $payload = $this->payload();
+        $this->putJson(route('trips.update', $first), $payload)->assertOk();
+        $this->putJson(route('trips.update', $second), $payload)->assertOk();
+        $this->postJson(route('trips.dispatch', $first))->assertOk();
+        $payload['version'] = $second->fresh()->version;
+        $this->putJson(route('trips.update', $second), $payload)->assertUnprocessable()->assertJsonValidationErrors(['vehicle_id', 'personnels.0.employee_id']);
+        $this->postJson(route('trips.dispatch', $second))->assertUnprocessable()->assertJsonValidationErrors(['vehicle_id', 'personnels.0.employee_id']);
+        $replacement = $this->payload();
+        $replacement['personnels'] = $payload['personnels'];
+        $replacement['version'] = $second->fresh()->version;
+        $this->putJson(route('trips.update', $second), $replacement)->assertUnprocessable()->assertJsonValidationErrors('personnels.0.employee_id');
+        $replacement['personnels'] = $this->payload()['personnels'];
+        $replacement['vehicle_id'] = $payload['vehicle_id'];
+        $this->putJson(route('trips.update', $second), $replacement)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
+        $this->getJson(route('trips.availability', $second))->assertOk()
+            ->assertJsonPath('vehicles.'.$payload['vehicle_id'], 'This vehicle is already assigned to a dispatched trip.')
+            ->assertJsonPath('personnels.'.$payload['personnels'][0]['employee_id'], 'This person is already assigned to a dispatched trip.');
+        $this->get(route('trips.show', $second))->assertOk()->assertSee('already assigned to a dispatched trip');
+        $this->postJson(route('trips.complete', $first))->assertOk();
+        $this->getJson(route('trips.availability', $second))->assertJsonPath('vehicles.'.$payload['vehicle_id'], null)
+            ->assertJsonPath('personnels.'.$payload['personnels'][0]['employee_id'], null);
+        $this->putJson(route('trips.update', $second), $payload)->assertOk();
+        $this->postJson(route('trips.dispatch', $second))->assertOk();
+    }
+
+    public function test_cancellation_and_reopening_release_resources_but_status_is_still_checked(): void
+    {
+        foreach (['Cancelled', 'Open'] as $status) {
+            $first = $this->draft();
+            $second = $this->draft();
+            $payload = $this->payload();
+            $this->postJson(route('trips.dispatch', $first), $payload)->assertOk();
+            $this->putJson(route('trip-status-updaters.update'), ['trip_id' => $first->trip_id, 'version' => $first->fresh()->version, 'new_status' => $status, 'reason' => 'Release resources'])->assertOk();
+            Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Maintenance']);
+            $this->putJson(route('trips.update', $second), $payload)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
+            Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Running']);
+            $this->postJson(route('trips.dispatch', $second), $payload)->assertOk();
+        }
+    }
+
     private function payload(): array
     {
         $suffix = Str::random(8);
         $type = TripType::create(['trip_type' => 'Delivery '.$suffix, 'is_active' => true]);
         $payment = TripPayment::create(['payment_type' => 'Cash '.$suffix, 'is_active' => true]);
-        $vehicle = Vehicle::create(['warehouse_code' => 'TEST', 'vehicle_group' => 'Truck', 'body_number' => 'TEST-VAN-'.$suffix, 'vehicle_type' => 'Truck', 'plate_number' => 'TEST-'.$suffix, 'vehicle_make' => 'Isuzu', 'year_model' => 2024, 'engine_number' => 'ENG', 'chassi_number' => 'CHS', 'transmission' => 'Manual', 'fuel_type' => 'Diesel', 'fuel_capacity' => 100, 'fuel_usage_per_kilometer' => 0.25, 'engine_type' => 'Diesel', 'cargo_capacity' => 5000, 'vehicle_status' => 'Available']);
+        $vehicle = Vehicle::create(['warehouse_code' => 'TEST', 'vehicle_group' => 'Truck', 'body_number' => 'TEST-VAN-'.$suffix, 'vehicle_type' => 'Truck', 'plate_number' => 'TEST-'.$suffix, 'vehicle_make' => 'Isuzu', 'year_model' => 2024, 'engine_number' => 'ENG', 'chassi_number' => 'CHS', 'transmission' => 'Manual', 'fuel_type' => 'Diesel', 'fuel_capacity' => 100, 'fuel_usage_per_kilometer' => 0.25, 'engine_type' => 'Diesel', 'cargo_capacity' => 5000, 'vehicle_status' => 'Running']);
         $employee = Personnel::create(['employee_id' => 'EMP-'.$suffix, 'last_name' => 'Driver', 'first_name' => 'Test', 'address' => 'Manila', 'contact_number' => '123', 'position' => 'Driver', 'personnel_type' => 'Driver', 'warehouse_code' => 'TEST', 'is_active' => true]);
         $helper = $employee->replicate();
         $helper->employee_id = 'HELP-'.$suffix;

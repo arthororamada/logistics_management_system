@@ -21,6 +21,11 @@ class SaveTripRequest extends FormRequest
         return $this->user()->hasPermission('trips.update');
     }
 
+    public function messages(): array
+    {
+        return ['personnels.*.employee_id.exists' => 'Select existing Active personnel to assign to a trip.'];
+    }
+
     public function rules(): array
     {
         $active = fn ($table, $column = 'id') => Rule::exists($table, $column)->where('is_active', true);

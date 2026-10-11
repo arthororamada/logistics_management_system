@@ -68,6 +68,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/trips', [\App\Http\Controllers\TripController::class, 'index'])->middleware('permission:trips.view')->name('trips.index');
     Route::post('/trips', [\App\Http\Controllers\TripController::class, 'store'])->middleware(['permission:trips.create', 'permission:trips.view'])->name('trips.store');
     Route::get('/trips/{trip}', [\App\Http\Controllers\TripController::class, 'show'])->middleware('permission:trips.view')->name('trips.show');
+    Route::get('/trips/{trip}/availability', [\App\Http\Controllers\TripController::class, 'availability'])->middleware('permission:trips.view')->name('trips.availability');
     Route::put('/trips/{trip}', [\App\Http\Controllers\TripController::class, 'update'])->middleware('permission:trips.update')->name('trips.update');
     Route::post('/trips/{trip}/dispatch', [\App\Http\Controllers\TripController::class, 'dispatch'])->middleware('permission:trips.dispatch')->name('trips.dispatch');
     Route::post('/trips/{trip}/complete', [\App\Http\Controllers\TripController::class, 'complete'])->middleware('permission:trips.complete')->name('trips.complete');

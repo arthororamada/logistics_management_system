@@ -21,6 +21,7 @@ class TripService
     {
         abort_unless($trip->current_status === 'Open', 409, 'Only open trips can be edited.');
         abort_unless((int) $data['version'] === (int) $trip->version, 409, 'This trip changed. Reload before saving.');
+        app(TripAssignmentEligibility::class)->validate($trip, $data['vehicle_id'] ?? null, array_column($data['personnels'], 'employee_id'));
         $this->prepareFuelCosts($trip, $data, $userId);
         $trip->fill(Arr::only($data, ['vehicle_id', 'tariff_id', 'trip_no', 'trip_type', 'payment_type', 'drops_number', 'gcash_number']));
         $vehicle = $trip->vehicle_id ? Vehicle::findOrFail($trip->vehicle_id) : null;
@@ -219,6 +220,7 @@ class TripService
     public function dispatch(Trip $trip, int $userId, ?string $reason): void
     {
         abort_unless($trip->current_status === 'Open', 409, 'Only open trips can be dispatched.');
+        app(TripAssignmentEligibility::class)->validate($trip, $trip->vehicle_id, $trip->personnels()->pluck('employee_id')->all());
         $errors = [];
         foreach (['vehicle_id', 'trip_no', 'trip_type', 'payment_type', 'trip_route_origin', 'trip_route_destination', 'tariff_id'] as $field) {
             if (! $trip->$field) {
