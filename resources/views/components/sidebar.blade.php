@@ -8,6 +8,13 @@
             ['label' => 'Maintenance', 'icon' => 'maintenance', 'route' => 'maintenances.index', 'permission' => 'maintenances.view'],
             ['label' => 'Notifications', 'icon' => 'bell', 'route' => 'notifications.index', 'permission' => 'maintenances.view'],
         ],
+        'Document Manifests' => [
+            ['label' => 'Pickup', 'icon' => 'reports', 'route' => 'pickup.index', 'permission' => 'pickup.view'],
+            ['label' => 'Inbound', 'icon' => 'reports', 'route' => 'inbound.index', 'permission' => 'inbound.view'],
+            ['label' => 'Transfer', 'icon' => 'reports', 'route' => 'transfer.index', 'permission' => 'transfer.view'],
+            ['label' => 'Delivery', 'icon' => 'reports', 'route' => 'delivery.index', 'permission' => 'delivery.view'],
+            ['label' => 'Return', 'icon' => 'reports', 'route' => 'return.index', 'permission' => 'return.view'],
+        ],
         'Trip Maintenance' => [
             ['label' => 'Clients', 'icon' => 'user', 'route' => 'clients.index', 'permission' => 'clients.view'],
             ['label' => 'Routes', 'icon' => 'trips', 'route' => 'routes.index', 'permission' => 'routes.view'],

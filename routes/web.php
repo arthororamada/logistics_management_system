@@ -2,6 +2,11 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PickupController;
+use App\Http\Controllers\InboundController;
+use App\Http\Controllers\TransferController;
+use App\Http\Controllers\DeliveryController;
+use App\Http\Controllers\ReturnController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WarehouseController;
@@ -64,6 +69,36 @@ Route::get('/template', function () {
 })->middleware(['auth', 'permission:template.view'])->name('template');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/document-manifests/return', [ReturnController::class, 'index'])->middleware('permission:return.view')->name('return.index');
+    Route::post('/document-manifests/return', [ReturnController::class, 'store'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.store');
+    Route::post('/document-manifests/return/waybills', [ReturnController::class, 'addWaybills'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.waybills.add');
+    Route::delete('/document-manifests/return/waybills', [ReturnController::class, 'removeWaybill'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.waybills.remove');
+    Route::get('/document-manifests/return/{returnManifest}', [ReturnController::class, 'show'])->middleware('permission:return.view')->name('return.show');
+    Route::post('/document-manifests/return/{returnManifest}/dispatch', [ReturnController::class, 'dispatch'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.dispatch');
+    Route::get('/document-manifests/delivery', [DeliveryController::class, 'index'])->middleware('permission:delivery.view')->name('delivery.index');
+    Route::post('/document-manifests/delivery', [DeliveryController::class, 'store'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.store');
+    Route::post('/document-manifests/delivery/waybills', [DeliveryController::class, 'addWaybills'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.waybills.add');
+    Route::delete('/document-manifests/delivery/waybills', [DeliveryController::class, 'removeWaybill'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.waybills.remove');
+    Route::get('/document-manifests/delivery/{delivery}', [DeliveryController::class, 'show'])->middleware('permission:delivery.view')->name('delivery.show');
+    Route::post('/document-manifests/delivery/{delivery}/dispatch', [DeliveryController::class, 'dispatch'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.dispatch');
+    Route::get('/document-manifests/transfer', [TransferController::class, 'index'])->middleware('permission:transfer.view')->name('transfer.index');
+    Route::post('/document-manifests/transfer', [TransferController::class, 'store'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.store');
+    Route::post('/document-manifests/transfer/waybills', [TransferController::class, 'addWaybills'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.waybills.add');
+    Route::delete('/document-manifests/transfer/waybills', [TransferController::class, 'removeWaybill'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.waybills.remove');
+    Route::get('/document-manifests/transfer/{transfer}', [TransferController::class, 'show'])->middleware('permission:transfer.view')->name('transfer.show');
+    Route::post('/document-manifests/transfer/{transfer}/dispatch', [TransferController::class, 'dispatch'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.dispatch');
+    Route::get('/document-manifests/inbound', [InboundController::class, 'index'])->middleware('permission:inbound.view')->name('inbound.index');
+    Route::post('/document-manifests/inbound', [InboundController::class, 'store'])->middleware(['permission:inbound.view', 'permission:inbound.create'])->name('inbound.store');
+    Route::post('/document-manifests/inbound/waybills', [InboundController::class, 'addWaybills'])->middleware(['permission:inbound.view', 'permission:inbound.create'])->name('inbound.waybills.add');
+    Route::delete('/document-manifests/inbound/waybills', [InboundController::class, 'removeWaybill'])->middleware(['permission:inbound.view', 'permission:inbound.create'])->name('inbound.waybills.remove');
+
+    Route::get('/document-manifests/pickup', [PickupController::class, 'index'])->middleware('permission:pickup.view')->name('pickup.index');
+    Route::post('/document-manifests/pickup', [PickupController::class, 'store'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.store');
+    Route::post('/document-manifests/pickup/waybills', [PickupController::class, 'addWaybills'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.waybills.add');
+    Route::delete('/document-manifests/pickup/waybills', [PickupController::class, 'removeWaybill'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.waybills.remove');
+    Route::get('/document-manifests/pickup/{pickup}', [PickupController::class, 'show'])->middleware('permission:pickup.view')->name('pickup.show');
+    Route::post('/document-manifests/pickup/{pickup}/dispatch', [PickupController::class, 'dispatch'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.dispatch');
+
     Route::get('/users', [UserController::class, 'index'])->middleware('permission:users.view')->name('users.index');
     Route::get('/users/create', [UserController::class, 'create'])->middleware('permission:users.create')->name('users.create');
     Route::post('/users', [UserController::class, 'store'])->middleware('permission:users.create')->name('users.store');
