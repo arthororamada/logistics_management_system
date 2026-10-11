@@ -1,4 +1,5 @@
 import './bootstrap';
+import './pickup-driver-search';
 
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-term-department]').forEach((departmentSelect) => {

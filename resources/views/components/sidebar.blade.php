@@ -10,6 +10,9 @@
         'Document Manifests' => [
             ['label' => 'Pickup', 'icon' => 'reports', 'route' => 'pickup.index', 'permission' => 'pickup.view'],
             ['label' => 'Inbound', 'icon' => 'reports', 'route' => 'inbound.index', 'permission' => 'inbound.view'],
+            ['label' => 'Transfer', 'icon' => 'reports', 'route' => 'transfer.index', 'permission' => 'transfer.view'],
+            ['label' => 'Delivery', 'icon' => 'reports', 'route' => 'delivery.index', 'permission' => 'delivery.view'],
+            ['label' => 'Return', 'icon' => 'reports', 'route' => 'return.index', 'permission' => 'return.view'],
         ],
         'Trip Maintenance' => [
             ['label' => 'Clients', 'icon' => 'user', 'route' => 'clients.index', 'permission' => 'clients.view'],

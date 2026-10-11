@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Pickup;
 use App\Models\Personnel;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -20,9 +21,36 @@ class PickupController extends Controller
         $draftNumbers = $request->session()->get('pickup.waybill_numbers', []);
         $drivers = Personnel::query()->where('is_active', 1)
             ->whereRaw('LOWER(TRIM(position)) = ?', ['driver'])
-            ->orderBy('last_name')->orderBy('first_name')->get();
+            ->orderBy('last_name')->orderBy('first_name')->orderBy('id')->limit(20)->get();
+        if ($request->old('driver_id') && !$drivers->contains('id', $request->old('driver_id'))) {
+            $selectedDriver = Personnel::query()->where('is_active', 1)
+                ->whereRaw('LOWER(TRIM(position)) = ?', ['driver'])->find($request->old('driver_id'));
+            if ($selectedDriver) {
+                $drivers->prepend($selectedDriver);
+            }
+        }
 
         return view('pickup.index', compact('pickups', 'draftNumbers', 'drivers'));
+    }
+
+    public function searchDrivers(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
+        $search = trim($validated['search'] ?? '');
+        $drivers = Personnel::query()->where('is_active', 1)
+            ->whereRaw('LOWER(TRIM(position)) = ?', ['driver']);
+        foreach (preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) as $term) {
+            $drivers->where(function ($query) use ($term) {
+                foreach (['first_name', 'last_name', 'middle_name', 'employee_id'] as $column) {
+                    $query->orWhere($column, 'like', '%'.$term.'%');
+                }
+            });
+        }
+
+        return response()->json(['drivers' => $drivers->orderBy('last_name')->orderBy('first_name')
+            ->orderBy('id')->limit(20)->get(['id', 'first_name', 'last_name', 'middle_name', 'employee_id'])
+            ->map(fn ($driver) => ['id' => $driver->id, 'label' => trim($driver->last_name.', '.$driver->first_name.' '.$driver->middle_name).' ('.$driver->employee_id.')'])])
+            ->header('Cache-Control', 'no-store');
     }
 
     public function addWaybills(Request $request): RedirectResponse
@@ -93,7 +121,7 @@ class PickupController extends Controller
                 return false;
             }
 
-            $this->validateWaybills($manifest->waybill_numbers);
+            $this->validateWaybills($manifest->waybill_numbers, 'for_pickup_dispatch');
             DB::table('pickup_details')->insert(array_map(fn ($number) => [
                 'dm' => $manifest->id,
                 'waybill_number' => $number,
@@ -109,7 +137,7 @@ class PickupController extends Controller
         return redirect()->route('pickup.show', $pickup)->with('success', $dispatched ? 'Document manifest dispatched.' : 'Document manifest has already been dispatched.');
     }
 
-    private function validateWaybills(array $numbers): void
+    private function validateWaybills(array $numbers, string $requiredStatus = 'for_pickup'): void
     {
         $validator = Validator::make(['numbers' => $numbers], [
             'numbers' => ['required', 'array', 'min:1', 'max:1000'],
@@ -124,12 +152,17 @@ class PickupController extends Controller
             throw ValidationException::withMessages(['waybill_numbers' => $validator->errors()->all()]);
         }
 
-        $existing = DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)->pluck('waybill_number')->all();
+        $packages = DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
+            ->get(['waybill_number', 'package_status']);
+        $existing = $packages->pluck('waybill_number')->all();
+        $wrongStatus = $packages->filter(fn ($package) => $package->package_status !== $requiredStatus)
+            ->pluck('waybill_number')->unique()->values()->all();
         $missing = array_diff($numbers, $existing);
         $dispatched = DB::table('pickup_details')->whereIn('waybill_number', $numbers)
             ->where('status', 'dispatched')->distinct()->pluck('waybill_number')->all();
         $errors = array_merge(
             array_map(fn ($number) => 'Waybill '.$number.' does not exist in packages or has been deleted.', array_values($missing)),
+            array_map(fn ($number) => 'Waybill '.$number.' must have package status '.$requiredStatus.' before it can be processed for pickup.', $wrongStatus),
             array_map(fn ($number) => 'Waybill '.$number.' has already been dispatched and cannot be added to another pickup document manifest.', $dispatched),
         );
         if ($errors) {

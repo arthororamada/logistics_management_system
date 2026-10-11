@@ -59,7 +59,7 @@ class PickupManagementTest extends TestCase
         ])->assertRedirect(route('pickup.index'))->assertSessionHasNoErrors()
             ->assertSessionHas('pickup.waybill_numbers', ['001234', 'WB-002', 'WB-003', 'WB-004', 'WB-005']);
         $this->assertSame(0, Pickup::count());
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'package_status' => 'pending']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'package_status' => 'for_pickup']);
         $this->post(route('pickup.waybills.add'), ['waybill_numbers' => '001234'])->assertSessionHasNoErrors();
         $this->get(route('pickup.index'))->assertOk()->assertSee('001234')->assertSee('Remove');
         $response = $this->post(route('pickup.store'), ['driver_id' => Personnel::where('employee_id', 'DRIVER-001')->value('id')]);
@@ -73,9 +73,12 @@ class PickupManagementTest extends TestCase
         foreach ($pickup->waybill_numbers as $number) {
             $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => 0, 'package_status' => 'for_pickup_dispatch']);
         }
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'pending']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'pending']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'for_pickup']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'for_pickup']);
         $this->get(route('pickup.show', $pickup))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertSee('DRIVER-001');
+        $this->post(route('pickup.dispatch', $pickup))->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('pickup_details', 5);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 0, 'package_status' => 'pickup_dispatched']);
     }
 
     public function test_unknown_and_deleted_waybills_reject_the_batch_and_preserve_the_draft(): void
@@ -148,7 +151,7 @@ class PickupManagementTest extends TestCase
         $this->from(route('pickup.show', $pending))->post(route('pickup.dispatch', $pending))
             ->assertRedirect(route('pickup.show', $pending))->assertSessionHasErrors('waybill_numbers');
         $this->assertDatabaseCount('pickup_details', 1);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-001', 'package_status' => 'pending']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-001', 'package_status' => 'for_pickup']);
     }
 
     public function test_waybills_can_be_removed_from_the_draft(): void
@@ -191,7 +194,50 @@ class PickupManagementTest extends TestCase
                 ->assertSessionHas('pickup.waybill_numbers', ['VALID']);
         }
         $this->assertDatabaseCount('pickups', 0);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'pending']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_pickup']);
+    }
+
+    public function test_driver_search_queries_current_active_drivers_by_name_and_employee_id(): void
+    {
+        $driver = $this->personnel('SEARCH-002', ' driver ');
+        $driver->update(['first_name' => 'Maria', 'last_name' => 'Santos', 'middle_name' => 'Cruz']);
+        $this->personnel('SEARCH-INACTIVE', 'Driver', false);
+        $this->personnel('SEARCH-HELPER', 'Helper');
+        $this->actingAs($this->administrator());
+        foreach (['SEARCH-002', 'Maria', 'Santos', 'Cruz', 'Maria Santos'] as $search) {
+            $this->getJson(route('pickup.drivers.search', ['search' => $search]))
+                ->assertOk()->assertJsonCount(1, 'drivers')->assertJsonPath('drivers.0.id', $driver->id)
+                ->assertJsonPath('drivers.0.label', 'Santos, Maria Cruz (SEARCH-002)');
+        }
+        $this->getJson(route('pickup.drivers.search', ['search' => 'SEARCH']))->assertJsonCount(1, 'drivers');
+        $driver->update(['is_active' => false]);
+        $this->getJson(route('pickup.drivers.search', ['search' => 'SEARCH']))->assertJsonCount(0, 'drivers');
+        $this->getJson(route('pickup.drivers.search', ['search' => str_repeat('a', 101)]))
+            ->assertUnprocessable()->assertJsonValidationErrors('search');
+    }
+
+    public function test_driver_search_limits_results_and_preserves_selected_driver_on_validation_errors(): void
+    {
+        for ($i = 0; $i < 25; $i++) {
+            $this->personnel('SEARCH-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT));
+        }
+        $driver = $this->personnel('LAST-DRIVER');
+        $driver->update(['last_name' => 'Zzz']);
+        $this->actingAs($this->administrator())->getJson(route('pickup.drivers.search'))
+            ->assertOk()->assertJsonCount(20, 'drivers');
+        $this->withSession(['_old_input' => ['driver_id' => $driver->id]])->get(route('pickup.index'))
+            ->assertOk()->assertSee('LAST-DRIVER')->assertSee('Search drivers');
+    }
+
+    public function test_driver_search_requires_authentication_and_pickup_create_permission(): void
+    {
+        $this->getJson(route('pickup.drivers.search'))->assertUnauthorized();
+        $user = User::create(['name' => 'Viewer', 'username' => 'driver-viewer', 'password' => 'test-password']);
+        $this->actingAs($user)->getJson(route('pickup.drivers.search'))->assertForbidden();
+        $roleId = DB::table('roles')->where('slug', 'staff')->value('id');
+        DB::table('role_user')->insert(['role_id' => $roleId, 'user_id' => $user->id]);
+        DB::table('permission_role')->insert(['role_id' => $roleId, 'permission_id' => DB::table('permissions')->where('slug', 'pickup.view')->value('id')]);
+        $this->getJson(route('pickup.drivers.search'))->assertForbidden();
     }
 
     public function test_dispatch_creates_one_detail_per_waybill_and_repeated_dispatch_is_safe(): void
@@ -201,6 +247,8 @@ class PickupManagementTest extends TestCase
         $this->package('UNRELATED');
         $this->package('001234', true);
         $pickup = $this->manifest(['001234', 'WB-002']);
+        DB::table('packages')->whereIn('waybill_number', $pickup->waybill_numbers)->where('is_deleted', 0)
+            ->update(['package_status' => 'for_pickup_dispatch']);
         for ($attempt = 0; $attempt < 2; $attempt++) {
             $this->actingAs($this->administrator())->post(route('pickup.dispatch', $pickup))
                 ->assertRedirect(route('pickup.show', $pickup))->assertSessionHasNoErrors();
@@ -210,8 +258,8 @@ class PickupManagementTest extends TestCase
             $this->assertDatabaseHas('pickup_details', ['dm' => $pickup->id, 'waybill_number' => $number, 'status' => 'dispatched']);
             $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => 0, 'package_status' => 'pickup_dispatched']);
         }
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'pending']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'pending']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'for_pickup']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'for_pickup']);
         $this->assertNotNull(DB::table('pickup_details')->first()->created_at);
         $this->get(route('pickup.show', $pickup))->assertOk()->assertSee('dispatched')->assertDontSee('Dispatch Document Manifest');
     }
@@ -221,12 +269,13 @@ class PickupManagementTest extends TestCase
         $this->package('VALID');
         $this->package('DELETED', true);
         $pickup = $this->manifest(['VALID', 'DELETED']);
+        DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_pickup_dispatch']);
         $this->actingAs($this->administrator())->from(route('pickup.show', $pickup))
             ->post(route('pickup.dispatch', $pickup))->assertRedirect(route('pickup.show', $pickup))
             ->assertSessionHasErrors('waybill_numbers');
         $this->assertDatabaseCount('pickup_details', 0);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'pending']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'DELETED', 'package_status' => 'pending']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_pickup_dispatch']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'DELETED', 'package_status' => 'for_pickup']);
     }
 
     public function test_pickup_requires_authentication_and_permissions(): void
@@ -259,7 +308,7 @@ class PickupManagementTest extends TestCase
     {
         DB::table('packages')->insert([
             'waybill_number' => $number, 'package_id' => 'PKG-'.$number,
-            'package_status' => 'pending', 'buyer_name' => 'Test Buyer',
+            'package_status' => 'for_pickup', 'buyer_name' => 'Test Buyer',
             'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted,
         ]);
     }
@@ -272,5 +321,34 @@ class PickupManagementTest extends TestCase
     private function administrator(): User
     {
         return User::where('username', 'admin')->firstOrFail();
+    }
+
+    public function test_all_active_packages_must_be_for_pickup_before_adding(): void
+    {
+        $this->package('VALID');
+        $this->package('MIXED');
+        $this->package('MIXED');
+        $packageId = DB::table('packages')->where('waybill_number', 'MIXED')->value('id');
+        DB::table('packages')->where('id', $packageId)->update(['package_status' => 'pending']);
+        $this->actingAs($this->administrator())->withSession(['pickup.waybill_numbers' => ['VALID']])
+            ->from(route('pickup.index'))->post(route('pickup.waybills.add'), ['waybill_numbers' => 'MIXED'])
+            ->assertSessionHasErrors('waybill_numbers')->assertSessionHas('pickup.waybill_numbers', ['VALID']);
+        $this->get(route('pickup.index'))->assertSee('Waybill MIXED must have package status for_pickup');
+        $this->package('VALID', true);
+        DB::table('packages')->where('waybill_number', 'VALID')->where('is_deleted', 1)->update(['package_status' => 'pending']);
+        $this->post(route('pickup.waybills.add'), ['waybill_numbers' => 'VALID'])->assertSessionHasNoErrors();
+    }
+
+    public function test_creation_rechecks_for_pickup_status_and_keeps_the_draft_on_failure(): void
+    {
+        $this->package('CHANGED');
+        $this->actingAs($this->administrator())->post(route('pickup.waybills.add'), ['waybill_numbers' => 'CHANGED'])
+            ->assertSessionHasNoErrors();
+        DB::table('packages')->where('waybill_number', 'CHANGED')->update(['package_status' => 'accepted_to_warehouse']);
+        $this->post(route('pickup.store'), ['driver_id' => Personnel::where('employee_id', 'DRIVER-001')->value('id')])
+            ->assertSessionHasErrors('waybill_numbers')->assertSessionHas('pickup.waybill_numbers', ['CHANGED']);
+        $this->assertDatabaseCount('pickups', 0);
+        $this->assertDatabaseCount('pickup_details', 0);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'CHANGED', 'package_status' => 'accepted_to_warehouse']);
     }
 }

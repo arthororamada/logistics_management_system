@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Inbound;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,10 +13,9 @@ class InboundController extends Controller
 {
     public function index(Request $request): View
     {
-        $inbounds = Inbound::query()->latest('id')->paginate(15);
         $draftNumbers = $request->session()->get('inbound.waybill_numbers', []);
 
-        return view('inbound.index', compact('inbounds', 'draftNumbers'));
+        return view('inbound.index', compact('draftNumbers'));
     }
 
     public function addWaybills(Request $request): RedirectResponse
@@ -28,7 +26,7 @@ class InboundController extends Controller
         $this->validateWaybills($draft);
         $request->session()->put('inbound.waybill_numbers', $draft);
 
-        return redirect()->route('inbound.index')->with('success', 'Waybill numbers validated and added. '.count($draft).' number(s) ready for the inbound manifest.');
+        return redirect()->route('inbound.index')->with('success', 'Waybill numbers validated and added. '.count($draft).' number(s) ready to be accepted to the warehouse.');
     }
 
     public function removeWaybill(Request $request): RedirectResponse
@@ -43,23 +41,15 @@ class InboundController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $numbers = $request->session()->get('inbound.waybill_numbers', []);
-        $inbound = DB::transaction(function () use ($numbers, $request) {
+        DB::transaction(function () use ($numbers) {
             $this->validateWaybills($numbers, true);
 
-            return Inbound::create(['waybill_numbers' => $numbers, 'created_by' => $request->user()->id]);
+            DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
+                ->update(['package_status' => 'accepted_to_warehouse']);
         });
         $request->session()->forget('inbound.waybill_numbers');
 
-        return redirect()->route('inbound.show', $inbound)->with('success', 'Inbound document manifest created.');
-    }
-
-    public function show(Inbound $inbound): View
-    {
-        $packages = DB::table('packages')->whereIn('waybill_number', $inbound->waybill_numbers)
-            ->where('is_deleted', 0)->get()->groupBy('waybill_number');
-        $creator = DB::table('users')->where('id', $inbound->created_by)->value('name');
-
-        return view('inbound.show', compact('inbound', 'packages', 'creator'));
+        return redirect()->route('inbound.index')->with('success', 'Packages accepted to the warehouse.');
     }
 
     private function validateWaybills(array $numbers, bool $lock = false): void
@@ -68,8 +58,8 @@ class InboundController extends Controller
             'numbers' => ['required', 'array', 'min:1', 'max:1000'],
             'numbers.*' => ['required', 'string', 'max:100'],
         ], [
-            'numbers.required' => 'Add at least one waybill number before creating the inbound manifest.',
-            'numbers.max' => 'An inbound manifest can contain up to 1,000 waybill numbers.',
+            'numbers.required' => 'Add at least one waybill number before accepting packages to the warehouse.',
+            'numbers.max' => 'An inbound batch can contain up to 1,000 waybill numbers.',
             'numbers.*.max' => 'Each waybill number must be no longer than 100 characters.',
         ]);
         if ($validator->fails()) {
@@ -87,7 +77,7 @@ class InboundController extends Controller
             if ($matches->isEmpty()) {
                 $errors[] = 'Waybill '.$number.' does not exist in packages or has been deleted.';
             } elseif ($matches->contains(fn ($package) => $package->package_status !== 'accepted_by_courier')) {
-                $errors[] = 'Waybill '.$number.' must have package status accepted_by_courier before it can be added to an inbound manifest.';
+                $errors[] = 'Waybill '.$number.' must have package status accepted_by_courier before it can be accepted to the warehouse.';
             }
         }
         if ($errors) {
