@@ -20,6 +20,9 @@
 [data-trip-status-updater] [data-status-editor]{margin-top:20px}
 .trip-form-grid strong{display:block}.trip-entry{padding:14px 0;border-bottom:1px solid #dce1e8;margin-bottom:14px}
 .trip-filter{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}.trip-filter>*{flex:1 1 140px}.trip-filter .button{flex:0 0 auto}
+[data-trip-status-updater] [data-status-search]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px}
+[data-trip-status-updater] [data-status-search] .form-group{min-width:0}
+[data-trip-status-updater] [data-status-search] .button{height:48px;white-space:nowrap}
 .trip-preview{min-width:0}.trip-preview-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#64748b}
 .trip-document{background:white;color:#172234;padding:28px;border:1px solid #dce1e8;box-shadow:0 4px 18px #00000008;font:13px/1.5 Arial,sans-serif;overflow-wrap:anywhere}
 .trip-document h1{font-size:24px;margin:6px 0}.trip-document h2{font-size:15px;margin:0}.trip-document h3{font-size:14px;margin:0 0 10px;border-bottom:2px solid #334155;padding-bottom:5px}
