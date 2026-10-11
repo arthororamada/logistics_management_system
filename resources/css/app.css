@@ -8,15 +8,6 @@
     color: var(--text); background: var(--background); font-synthesis: none;
 }
 * { box-sizing: border-box; }
-.driver-picker { position: relative; }
-.content-card.has-searchable-picker { overflow: visible; }
-.driver-picker-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; cursor: pointer; }
-.driver-picker-trigger[hidden], .driver-picker-panel[hidden] { display: none; }
-.driver-picker-panel { position: absolute; top: calc(100% + 5px); left: 0; right: 0; z-index: 20; padding: 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--white); box-shadow: 0 8px 24px rgba(11,31,58,.14); }
-.driver-picker-options { max-height: 240px; overflow-y: auto; }
-.driver-picker-options button { display: block; width: 100%; padding: 10px; border: 0; border-radius: 4px; background: transparent; text-align: left; font-size: 13px; cursor: pointer; }
-.driver-picker-options button:hover, .driver-picker-options button:focus-visible { background: var(--background); outline: 2px solid var(--primary-blue); outline-offset: -2px; }
-.driver-picker-options button[aria-selected="true"] { background: var(--background); font-weight: 600; }
 html, body { min-width: 320px; min-height: 100%; background: var(--background); }
 body { margin: 0; color: var(--text); }
 button, input { font: inherit; } button, a { -webkit-tap-highlight-color: transparent; } button { color: inherit; } a { color: inherit; text-decoration: none; }

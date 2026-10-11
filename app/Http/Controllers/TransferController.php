@@ -3,15 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Transfer;
-use App\Models\Personnel;
-use App\Models\Warehouse;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class TransferController extends Controller
@@ -20,46 +16,7 @@ class TransferController extends Controller
     {
         $transfers = Transfer::query()->latest('id')->paginate(15);
         $draftNumbers = $request->session()->get('transfer.waybill_numbers', []);
-        $drivers = Personnel::query()->where('is_active', 1)
-            ->whereRaw('LOWER(TRIM(position)) = ?', ['driver'])
-            ->orderBy('last_name')->orderBy('first_name')->orderBy('id')->limit(20)->get();
-        if ($request->old('driver_id') && !$drivers->contains('id', $request->old('driver_id'))) {
-            $selectedDriver = Personnel::query()->where('is_active', 1)
-                ->whereRaw('LOWER(TRIM(position)) = ?', ['driver'])->find($request->old('driver_id'));
-            if ($selectedDriver) {
-                $drivers->prepend($selectedDriver);
-            }
-        }
-
-        $warehouses = Warehouse::query()->where('is_active', 1)->orderBy('warehouse_description')->orderBy('id')->limit(20)->get();
-        if ($request->old('warehouse_destination') && !$warehouses->contains('warehouse_code', $request->old('warehouse_destination'))) {
-            $selectedWarehouse = Warehouse::query()->where('is_active', 1)->where('warehouse_code', $request->old('warehouse_destination'))->first();
-            if ($selectedWarehouse) {
-                $warehouses->prepend($selectedWarehouse);
-            }
-        }
-
-        return view('transfer.index', compact('transfers', 'draftNumbers', 'drivers', 'warehouses'));
-    }
-
-    public function searchDrivers(Request $request): JsonResponse
-    {
-        $validated = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
-        $search = trim($validated['search'] ?? '');
-        $drivers = Personnel::query()->where('is_active', 1)
-            ->whereRaw('LOWER(TRIM(position)) = ?', ['driver']);
-        foreach (preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) as $term) {
-            $drivers->where(function ($query) use ($term) {
-                foreach (['first_name', 'last_name', 'middle_name', 'employee_id'] as $column) {
-                    $query->orWhere($column, 'like', '%'.$term.'%');
-                }
-            });
-        }
-
-        return response()->json(['drivers' => $drivers->orderBy('last_name')->orderBy('first_name')
-            ->orderBy('id')->limit(20)->get(['id', 'first_name', 'last_name', 'middle_name', 'employee_id'])
-            ->map(fn ($driver) => ['id' => $driver->id, 'label' => trim($driver->last_name.', '.$driver->first_name.' '.$driver->middle_name).' ('.$driver->employee_id.')'])])
-            ->header('Cache-Control', 'no-store');
+        return view('transfer.index', compact('transfers', 'draftNumbers'));
     }
 
     public function addWaybills(Request $request): RedirectResponse
@@ -76,24 +33,6 @@ class TransferController extends Controller
         return redirect()->route('transfer.index')->with('success', 'Waybill numbers validated and added. '.count($draft).' number(s) ready for the document manifest.');
     }
 
-    public function searchWarehouses(Request $request): JsonResponse
-    {
-        $validated = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
-        $warehouses = Warehouse::query()->where('is_active', 1);
-        foreach (preg_split('/\s+/u', trim($validated['search'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $term) {
-            $warehouses->where(function ($query) use ($term) {
-                foreach (['warehouse_code', 'warehouse_description', 'city', 'province'] as $column) {
-                    $query->orWhere($column, 'like', '%'.$term.'%');
-                }
-            });
-        }
-
-        return response()->json(['warehouses' => $warehouses->orderBy('warehouse_description')->orderBy('id')
-            ->limit(20)->get(['warehouse_code', 'warehouse_description'])
-            ->map(fn ($warehouse) => ['id' => $warehouse->warehouse_code, 'label' => $warehouse->warehouse_description.' ('.$warehouse->warehouse_code.')'])])
-            ->header('Cache-Control', 'no-store');
-    }
-
     public function removeWaybill(Request $request): RedirectResponse
     {
         $validated = $request->validate(['waybill_number' => ['required', 'string', 'max:100']]);
@@ -105,26 +44,17 @@ class TransferController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'warehouse_destination' => ['required', 'string', 'max:255', Rule::exists('warehouses', 'warehouse_code')->where('is_active', 1)],
-            'driver_id' => ['required', 'integer', Rule::exists('personnel', 'id')->where(fn ($query) => $query
-                ->where('is_active', 1)->whereRaw('LOWER(TRIM(position)) = ?', ['driver']))],
-        ], [
-            'driver_id.required' => 'Select a driver before creating the document manifest.',
-            'driver_id.exists' => 'Select an active driver from personnel.',
-            'warehouse_destination.required' => 'Select a destination warehouse before creating the document manifest.',
-            'warehouse_destination.exists' => 'Select an active destination warehouse.',
-        ]);
         $numbers = $request->session()->get('transfer.waybill_numbers', []);
-        $transfer = DB::transaction(function () use ($numbers, $request, $validated) {
-            $this->validateWaybills($numbers, true);
-            return Transfer::create([
+        $transfer = DB::transaction(function () use ($numbers, $request) {
+            $this->validateWaybills($numbers, 'accepted_to_warehouse', true);
+            $transfer = Transfer::create([
                 'waybill_numbers' => $numbers,
                 'created_by' => $request->user()->id,
-                'driver_id' => $validated['driver_id'],
-                'warehouse_destination' => $validated['warehouse_destination'],
             ]);
+            DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
+                ->update(['package_status' => 'for_transfer_dispatch']);
 
+            return $transfer;
         });
         $request->session()->forget('transfer.waybill_numbers');
 
@@ -133,7 +63,6 @@ class TransferController extends Controller
 
     public function show(Transfer $transfer): View
     {
-        $transfer->load('driver', 'destination');
         $details = DB::table('transfer_details')->where('dm', $transfer->id)->get()->keyBy('waybill_number');
         $packages = DB::table('packages')->whereIn('waybill_number', $transfer->waybill_numbers)->where('is_deleted', 0)->get()->groupBy('waybill_number');
         $creator = DB::table('users')->where('id', $transfer->created_by)->value('name');
@@ -149,14 +78,7 @@ class TransferController extends Controller
                 return false;
             }
 
-            Validator::make($manifest->only(['driver_id', 'warehouse_destination']), [
-                'driver_id' => ['required', Rule::exists('personnel', 'id')->where(fn ($query) => $query->where('is_active', 1)->whereRaw('LOWER(TRIM(position)) = ?', ['driver']))],
-                'warehouse_destination' => ['required', Rule::exists('warehouses', 'warehouse_code')->where('is_active', 1)],
-            ], [
-                'driver_id.exists' => 'The selected driver is no longer active or available.',
-                'warehouse_destination.exists' => 'The destination warehouse is no longer active or available.',
-            ])->validate();
-            $this->validateWaybills($manifest->waybill_numbers, true);
+            $this->validateWaybills($manifest->waybill_numbers, 'for_transfer_dispatch', true);
             DB::table('transfer_details')->insert(array_map(fn ($number) => [
                 'dm' => $manifest->id,
                 'waybill_number' => $number,
@@ -170,7 +92,7 @@ class TransferController extends Controller
         return redirect()->route('transfer.show', $transfer)->with('success', $dispatched ? 'Document manifest dispatched.' : 'Document manifest has already been dispatched.');
     }
 
-    private function validateWaybills(array $numbers, bool $lock = false): void
+    private function validateWaybills(array $numbers, string $requiredStatus = 'accepted_to_warehouse', bool $lock = false): void
     {
         $validator = Validator::make(['numbers' => $numbers], [
             'numbers' => ['required', 'array', 'min:1', 'max:1000'],
@@ -191,7 +113,7 @@ class TransferController extends Controller
         }
         $packages = $query->get(['waybill_number', 'package_status']);
         $existing = $packages->pluck('waybill_number')->all();
-        $wrongStatus = $packages->filter(fn ($package) => $package->package_status !== 'accepted_to_warehouse')
+        $wrongStatus = $packages->filter(fn ($package) => $package->package_status !== $requiredStatus)
             ->pluck('waybill_number')->unique()->values()->all();
         $missing = array_diff($numbers, $existing);
         $dispatchedQuery = DB::table('transfer_details')->whereIn('waybill_number', $numbers)->where('status', 'dispatched');
@@ -201,7 +123,7 @@ class TransferController extends Controller
         $dispatched = $dispatchedQuery->distinct()->pluck('waybill_number')->all();
         $errors = array_merge(
             array_map(fn ($number) => 'Waybill '.$number.' does not exist in packages or has been deleted.', array_values($missing)),
-            array_map(fn ($number) => 'Waybill '.$number.' must have package status accepted_to_warehouse before it can be added to a transfer document manifest.', $wrongStatus),
+            array_map(fn ($number) => 'Waybill '.$number.' must have package status '.$requiredStatus.' before it can be processed for transfer.', $wrongStatus),
             array_map(fn ($number) => 'Waybill '.$number.' has already been dispatched and cannot be added to another transfer document manifest.', $dispatched),
         );
         if ($errors) {

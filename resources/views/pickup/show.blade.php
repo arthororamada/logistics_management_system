@@ -13,7 +13,6 @@
 
     <x-card title="Document Manifest Details">
         <p><strong>Manifest:</strong> #{{ $pickup->id }}</p>
-        <p><strong>Driver:</strong> @if($pickup->driver){{ $pickup->driver->last_name }}, {{ $pickup->driver->first_name }} {{ $pickup->driver->middle_name }} ({{ $pickup->driver->employee_id }})@else Not assigned @endif</p>
         <p><strong>Created by:</strong> {{ $creator ?? 'Unavailable' }}</p>
         <p><strong>Created:</strong> {{ $pickup->created_at?->format('M d, Y H:i') }}</p>
         <p><strong>Total waybill numbers:</strong> {{ count($pickup->waybill_numbers) }}</p>

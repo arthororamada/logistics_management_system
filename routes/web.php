@@ -67,22 +67,18 @@ Route::get('/template', function () {
 
 Route::middleware('auth')->group(function () {
     Route::get('/document-manifests/return', [ReturnController::class, 'index'])->middleware('permission:return.view')->name('return.index');
-    Route::get('/document-manifests/return/drivers', [ReturnController::class, 'searchDrivers'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.drivers.search');
     Route::post('/document-manifests/return', [ReturnController::class, 'store'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.store');
     Route::post('/document-manifests/return/waybills', [ReturnController::class, 'addWaybills'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.waybills.add');
     Route::delete('/document-manifests/return/waybills', [ReturnController::class, 'removeWaybill'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.waybills.remove');
     Route::get('/document-manifests/return/{returnManifest}', [ReturnController::class, 'show'])->middleware('permission:return.view')->name('return.show');
     Route::post('/document-manifests/return/{returnManifest}/dispatch', [ReturnController::class, 'dispatch'])->middleware(['permission:return.view', 'permission:return.create'])->name('return.dispatch');
     Route::get('/document-manifests/delivery', [DeliveryController::class, 'index'])->middleware('permission:delivery.view')->name('delivery.index');
-    Route::get('/document-manifests/delivery/drivers', [DeliveryController::class, 'searchDrivers'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.drivers.search');
     Route::post('/document-manifests/delivery', [DeliveryController::class, 'store'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.store');
     Route::post('/document-manifests/delivery/waybills', [DeliveryController::class, 'addWaybills'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.waybills.add');
     Route::delete('/document-manifests/delivery/waybills', [DeliveryController::class, 'removeWaybill'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.waybills.remove');
     Route::get('/document-manifests/delivery/{delivery}', [DeliveryController::class, 'show'])->middleware('permission:delivery.view')->name('delivery.show');
     Route::post('/document-manifests/delivery/{delivery}/dispatch', [DeliveryController::class, 'dispatch'])->middleware(['permission:delivery.view', 'permission:delivery.create'])->name('delivery.dispatch');
     Route::get('/document-manifests/transfer', [TransferController::class, 'index'])->middleware('permission:transfer.view')->name('transfer.index');
-    Route::get('/document-manifests/transfer/drivers', [TransferController::class, 'searchDrivers'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.drivers.search');
-    Route::get('/document-manifests/transfer/warehouses', [TransferController::class, 'searchWarehouses'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.warehouses.search');
     Route::post('/document-manifests/transfer', [TransferController::class, 'store'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.store');
     Route::post('/document-manifests/transfer/waybills', [TransferController::class, 'addWaybills'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.waybills.add');
     Route::delete('/document-manifests/transfer/waybills', [TransferController::class, 'removeWaybill'])->middleware(['permission:transfer.view', 'permission:transfer.create'])->name('transfer.waybills.remove');
@@ -94,7 +90,6 @@ Route::middleware('auth')->group(function () {
     Route::delete('/document-manifests/inbound/waybills', [InboundController::class, 'removeWaybill'])->middleware(['permission:inbound.view', 'permission:inbound.create'])->name('inbound.waybills.remove');
 
     Route::get('/document-manifests/pickup', [PickupController::class, 'index'])->middleware('permission:pickup.view')->name('pickup.index');
-    Route::get('/document-manifests/pickup/drivers', [PickupController::class, 'searchDrivers'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.drivers.search');
     Route::post('/document-manifests/pickup', [PickupController::class, 'store'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.store');
     Route::post('/document-manifests/pickup/waybills', [PickupController::class, 'addWaybills'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.waybills.add');
     Route::delete('/document-manifests/pickup/waybills', [PickupController::class, 'removeWaybill'])->middleware(['permission:pickup.view', 'permission:pickup.create'])->name('pickup.waybills.remove');

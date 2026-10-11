@@ -13,7 +13,6 @@
 
     <x-card title="Document Manifest Details">
         <p><strong>Manifest:</strong> #{{ $returnManifest->id }}</p>
-        <p><strong>Driver:</strong> @if($returnManifest->driver){{ $returnManifest->driver->last_name }}, {{ $returnManifest->driver->first_name }} {{ $returnManifest->driver->middle_name }} ({{ $returnManifest->driver->employee_id }})@else Not assigned @endif</p>
         <p><strong>Created by:</strong> {{ $creator ?? 'Unavailable' }}</p>
         <p><strong>Created:</strong> {{ $returnManifest->created_at?->format('M d, Y H:i') }}</p>
         <p><strong>Total waybill numbers:</strong> {{ count($returnManifest->waybill_numbers) }}</p>

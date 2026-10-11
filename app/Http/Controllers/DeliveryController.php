@@ -3,14 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Delivery;
-use App\Models\Personnel;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class DeliveryController extends Controller
@@ -19,38 +16,7 @@ class DeliveryController extends Controller
     {
         $deliveries = Delivery::query()->latest('id')->paginate(15);
         $draftNumbers = $request->session()->get('delivery.waybill_numbers', []);
-        $drivers = Personnel::query()->where('is_active', 1)
-            ->whereRaw('LOWER(TRIM(position)) = ?', ['driver'])
-            ->orderBy('last_name')->orderBy('first_name')->orderBy('id')->limit(20)->get();
-        if ($request->old('driver_id') && !$drivers->contains('id', $request->old('driver_id'))) {
-            $selectedDriver = Personnel::query()->where('is_active', 1)
-                ->whereRaw('LOWER(TRIM(position)) = ?', ['driver'])->find($request->old('driver_id'));
-            if ($selectedDriver) {
-                $drivers->prepend($selectedDriver);
-            }
-        }
-
-        return view('delivery.index', compact('deliveries', 'draftNumbers', 'drivers'));
-    }
-
-    public function searchDrivers(Request $request): JsonResponse
-    {
-        $validated = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
-        $search = trim($validated['search'] ?? '');
-        $drivers = Personnel::query()->where('is_active', 1)
-            ->whereRaw('LOWER(TRIM(position)) = ?', ['driver']);
-        foreach (preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) as $term) {
-            $drivers->where(function ($query) use ($term) {
-                foreach (['first_name', 'last_name', 'middle_name', 'employee_id'] as $column) {
-                    $query->orWhere($column, 'like', '%'.$term.'%');
-                }
-            });
-        }
-
-        return response()->json(['drivers' => $drivers->orderBy('last_name')->orderBy('first_name')
-            ->orderBy('id')->limit(20)->get(['id', 'first_name', 'last_name', 'middle_name', 'employee_id'])
-            ->map(fn ($driver) => ['id' => $driver->id, 'label' => trim($driver->last_name.', '.$driver->first_name.' '.$driver->middle_name).' ('.$driver->employee_id.')'])])
-            ->header('Cache-Control', 'no-store');
+        return view('delivery.index', compact('deliveries', 'draftNumbers'));
     }
 
     public function addWaybills(Request $request): RedirectResponse
@@ -78,20 +44,12 @@ class DeliveryController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'driver_id' => ['required', 'integer', Rule::exists('personnel', 'id')->where(fn ($query) => $query
-                ->where('is_active', 1)->whereRaw('LOWER(TRIM(position)) = ?', ['driver']))],
-        ], [
-            'driver_id.required' => 'Select a driver before creating the document manifest.',
-            'driver_id.exists' => 'Select an active driver from personnel.',
-        ]);
         $numbers = $request->session()->get('delivery.waybill_numbers', []);
-        $delivery = DB::transaction(function () use ($numbers, $request, $validated) {
+        $delivery = DB::transaction(function () use ($numbers, $request) {
             $this->validateWaybills($numbers, 'accepted_to_warehouse', true);
             $delivery = Delivery::create([
                 'waybill_numbers' => $numbers,
                 'created_by' => $request->user()->id,
-                'driver_id' => $validated['driver_id'],
             ]);
             DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
                 ->update(['package_status' => 'for_delivery_dispatch']);
@@ -105,7 +63,6 @@ class DeliveryController extends Controller
 
     public function show(Delivery $delivery): View
     {
-        $delivery->load('driver');
         $details = DB::table('delivery_details')->where('dm', $delivery->id)->get()->keyBy('waybill_number');
         $packages = DB::table('packages')->whereIn('waybill_number', $delivery->waybill_numbers)->where('is_deleted', 0)->get()->groupBy('waybill_number');
         $creator = DB::table('users')->where('id', $delivery->created_by)->value('name');
@@ -121,10 +78,6 @@ class DeliveryController extends Controller
                 return false;
             }
 
-            Validator::make($manifest->only('driver_id'), [
-                'driver_id' => ['required', Rule::exists('personnel', 'id')->where(fn ($query) => $query
-                    ->where('is_active', 1)->whereRaw('LOWER(TRIM(position)) = ?', ['driver']))],
-            ], ['driver_id.exists' => 'The selected driver is no longer active or available.'])->validate();
             $this->validateWaybills($manifest->waybill_numbers, 'for_delivery_dispatch', true);
             DB::table('delivery_details')->insert(array_map(fn ($number) => [
                 'dm' => $manifest->id,

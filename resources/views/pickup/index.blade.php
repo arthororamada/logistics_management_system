@@ -42,28 +42,6 @@
             </div>
             <form method="POST" action="{{ route('pickup.store') }}" class="form-stack">
                 @csrf
-                <div class="form-group">
-                    <label id="driver-label" for="driver_id">Driver <span class="required">*</span></label>
-                    <div class="driver-picker" data-driver-picker>
-                        <button type="button" class="form-select driver-picker-trigger @error('driver_id') has-error @enderror" id="driver-picker-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="driver-picker-panel" aria-labelledby="driver-label driver-picker-value" aria-describedby="driver-hint @error('driver_id') driver-error @enderror" hidden>
-                            <span id="driver-picker-value">Select a driver</span><span aria-hidden="true">&#9662;</span>
-                        </button>
-                        <div class="driver-picker-panel" id="driver-picker-panel" hidden>
-                            <label class="sr-only" for="driver-search">Search drivers</label>
-                            <div class="input-control"><input type="search" id="driver-search" maxlength="100" autocomplete="off" placeholder="Search by name or employee ID" data-driver-search data-search-url="{{ route('pickup.drivers.search') }}" role="combobox" aria-expanded="false" aria-controls="driver-options" aria-autocomplete="list" aria-describedby="driver-search-status"></div>
-                            <p class="field-hint" id="driver-search-status" role="status" aria-live="polite">Showing up to 20 active drivers. Type to search.</p>
-                            <div class="driver-picker-options" id="driver-options" role="listbox" aria-labelledby="driver-label"></div>
-                        </div>
-                    <select id="driver_id" name="driver_id" class="form-select @error('driver_id') has-error @enderror" required aria-describedby="driver-hint @error('driver_id') driver-error @enderror" @error('driver_id') aria-invalid="true" @enderror>
-                        <option value="">Select a driver</option>
-                        @foreach($drivers as $driver)
-                            <option value="{{ $driver->id }}" @selected((string) old('driver_id') === (string) $driver->id)>{{ $driver->last_name }}, {{ $driver->first_name }} {{ $driver->middle_name }} ({{ $driver->employee_id }})</option>
-                        @endforeach
-                    </select>
-                    </div>
-                    <p class="field-hint" id="driver-hint">Select an active driver before creating the document manifest.</p>
-                    @error('driver_id')<p class="form-error" id="driver-error">{{ $message }}</p>@enderror
-                </div>
                 <div class="form-actions"><x-button type="submit" variant="primary" :disabled="count($draftNumbers) === 0">Create Document Manifest</x-button></div>
             </form>
         </x-card>

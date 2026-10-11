@@ -12,9 +12,7 @@
     @endif
 
     <x-card title="Document Manifest Details">
-        <p><strong>Destination warehouse:</strong> {{ $transfer->destination?->warehouse_description ?? 'Unavailable' }} ({{ $transfer->warehouse_destination }})</p>
         <p><strong>Manifest:</strong> #{{ $transfer->id }}</p>
-        <p><strong>Driver:</strong> @if($transfer->driver){{ $transfer->driver->last_name }}, {{ $transfer->driver->first_name }} {{ $transfer->driver->middle_name }} ({{ $transfer->driver->employee_id }})@else Not assigned @endif</p>
         <p><strong>Created by:</strong> {{ $creator ?? 'Unavailable' }}</p>
         <p><strong>Created:</strong> {{ $transfer->created_at?->format('M d, Y H:i') }}</p>
         <p><strong>Total waybill numbers:</strong> {{ count($transfer->waybill_numbers) }}</p>
