@@ -14,7 +14,7 @@
                     <div class="form-group">
                         <label for="waybill_numbers">Waybill numbers <span class="required">*</span></label>
                         <textarea id="waybill_numbers" name="waybill_numbers" class="textarea-control @error('waybill_numbers') has-error @enderror" rows="10" maxlength="100000" required aria-describedby="waybill-hint @error('waybill_numbers') waybill-error @enderror" @error('waybill_numbers') aria-invalid="true" @enderror placeholder="Enter waybill numbers here...">{{ old('waybill_numbers') }}</textarea>
-                        <p class="field-hint" id="waybill-hint">Each package must have status accepted_by_courier. Separate numbers with new lines, commas, semicolons, or spaces. Up to 1,000 numbers per batch. Duplicates are added once; leading zeros are preserved.</p>
+                        <p class="field-hint" id="waybill-hint">Each package must have status for_pickup. Separate numbers with new lines, commas, semicolons, or spaces. Up to 1,000 numbers per batch. Duplicates are added once; leading zeros are preserved.</p>
                         @if($errors->has('waybill_numbers'))<div class="form-error" id="waybill-error" role="alert">@foreach($errors->get('waybill_numbers') as $message)<p>{{ $message }}</p>@endforeach</div>@endif
                     </div>
                 </div>

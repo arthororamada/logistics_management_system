@@ -288,6 +288,14 @@ class TripService
     public function complete(Trip $trip, int $userId, ?string $reason): void
     {
         abort_unless($trip->current_status === 'Dispatched', 409, 'Only dispatched trips can be completed.');
+        $vehicle = Vehicle::whereKey($trip->vehicle_id)->lockForUpdate()->firstOrFail();
+        $odometer = round((float) $vehicle->odometer + (float) $trip->total_distance, 2);
+        if ($odometer > 9999999999.99) {
+            throw ValidationException::withMessages([
+                'vehicle_id' => 'The completed trip distance would exceed the supported vehicle odometer value.',
+            ]);
+        }
+        $vehicle->update(['odometer' => $odometer]);
         $trip->date_completed = now();
         $this->transition($trip, 'Completed', $userId, $reason);
     }

@@ -76,8 +76,8 @@ class InboundController extends Controller
             $matches = $packages->get($number, collect());
             if ($matches->isEmpty()) {
                 $errors[] = 'Waybill '.$number.' does not exist in packages or has been deleted.';
-            } elseif ($matches->contains(fn ($package) => $package->package_status !== 'accepted_by_courier')) {
-                $errors[] = 'Waybill '.$number.' must have package status accepted_by_courier before it can be accepted to the warehouse.';
+            } elseif ($matches->contains(fn ($package) => $package->package_status !== 'for_pickup')) {
+                $errors[] = 'Waybill '.$number.' must have package status for_pickup before it can be accepted to the warehouse.';
             }
         }
         if ($errors) {

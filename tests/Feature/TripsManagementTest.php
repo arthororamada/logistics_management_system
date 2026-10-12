@@ -143,8 +143,12 @@ class TripsManagementTest extends TestCase
     public function test_separate_save_and_dispatch_and_completion_are_recorded_once(): void
     {
         $trip = $this->draft();
-        $this->saveAndDispatch($trip, $this->payload() + ['reason' => 'Ready'])->assertOk();
+        $payload = $this->payload();
+        $vehicle = Vehicle::findOrFail($payload['vehicle_id']);
+        $startingOdometer = (float) $vehicle->odometer;
+        $this->saveAndDispatch($trip, $payload + ['reason' => 'Ready'])->assertOk();
         $this->assertEquals('Dispatched', $trip->fresh()->current_status);
+        $this->assertEquals($startingOdometer, (float) $vehicle->fresh()->odometer);
         $this->assertDatabaseHas('trip_status', ['trip_id' => $trip->trip_id, 'status' => 'Dispatched', 'reason' => 'Ready', 'created_by' => $this->admin->id]);
         $this->get(route('trips.show', $trip))->assertOk()->assertSee('trip-readonly')->assertDontSee('id="trip-form"', false)->assertSee('Print Trip');
         $this->postJson(route('trips.dispatch', $trip))->assertStatus(409);
@@ -154,7 +158,9 @@ class TripsManagementTest extends TestCase
         $this->assertEquals('Completed', $trip->current_status);
         $this->assertNotNull($trip->date_completed);
         $this->assertEquals($this->admin->id, $trip->updated_by);
+        $this->assertEquals($startingOdometer + (float) $trip->total_distance, (float) $vehicle->fresh()->odometer);
         $this->postJson(route('trips.complete', $trip))->assertStatus(409);
+        $this->assertEquals($startingOdometer + (float) $trip->total_distance, (float) $vehicle->fresh()->odometer);
         $this->postJson(route('trips.dispatch', $trip))->assertStatus(409);
         $this->assertEquals(3, $trip->history()->count());
         $this->get(route('trips.show', $trip))->assertOk()->assertDontSee('Complete Trip')->assertDontSee('Dispatch Truck');

@@ -17,7 +17,7 @@ export function installNotifications() {
     document.addEventListener('submit', async (event) => {
         const form = event.target;
         if (!(form instanceof HTMLFormElement) || event.defaultPrevented
-            || form.matches('[data-trip-action], [data-trip-editor]')) return;
+            || form.matches('[data-trip-action], [data-trip-editor], [data-native-submit]')) return;
         const submitter = event.submitter;
         const method = (submitter?.getAttribute('formmethod') || form.method || 'get').toUpperCase();
         if (method === 'GET' || method === 'DIALOG') return;

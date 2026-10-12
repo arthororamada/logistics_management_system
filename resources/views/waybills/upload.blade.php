@@ -18,7 +18,7 @@
 
 <div class="waybill-upload-layout">
     <x-card title="Upload CSV File" subtitle="Waybill number is optional. Blank or omitted values are generated for the selected client.">
-        <form id="waybill-upload-form" method="POST" action="{{ route('waybills.import') }}" enctype="multipart/form-data" class="waybill-upload-form">
+        <form id="waybill-upload-form" method="POST" action="{{ route('waybills.import') }}" enctype="multipart/form-data" class="waybill-upload-form" data-native-submit>
             @csrf
             <label id="waybill-drop-zone" class="waybill-drop-zone" for="waybill-upload">
                 <span class="waybill-upload-icon"><x-icon name="upload" :size="28" /></span>
@@ -98,7 +98,7 @@
 @endif
 
 <dialog id="template-builder-modal" class="template-builder-modal">
-    <form method="POST" action="{{ route('waybills.custom-template') }}" class="template-builder-form">
+    <form method="POST" action="{{ route('waybills.custom-template') }}" class="template-builder-form" data-native-submit>
         @csrf
         <header class="template-builder-header"><div><p class="eyebrow">Custom CSV</p><h2>Create a Template</h2><span>Select the package and item fields to include as CSV columns.</span></div><button id="close-template-builder" type="button" class="icon-button" aria-label="Close template builder"><x-icon name="close" :size="18" /></button></header>
         <div class="template-builder-toolbar"><strong><span id="selected-template-fields">{{ count($requiredTemplateColumns) }}</span> fields selected</strong><div><button id="select-all-template-fields" type="button" class="text-button">Select all</button><button id="clear-template-fields" type="button" class="text-button">Clear all</button></div></div>
@@ -124,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const remove = document.querySelector('#remove-waybill-file');
     const submit = document.querySelector('#upload-waybills-button');
     const modal = document.querySelector('#template-builder-modal');
+    const templateForm = modal.querySelector('.template-builder-form');
     const templateCheckboxes = [...modal.querySelectorAll('input[type="checkbox"]')];
     const selectedCount = document.querySelector('#selected-template-fields');
     const downloadTemplate = document.querySelector('#download-custom-template');
@@ -232,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#select-all-template-fields').addEventListener('click', () => { templateCheckboxes.forEach((checkbox) => { checkbox.checked = true; }); updateTemplateSelection(); });
     document.querySelector('#clear-template-fields').addEventListener('click', () => { templateCheckboxes.forEach((checkbox) => { checkbox.checked = false; }); updateTemplateSelection(); });
     templateCheckboxes.forEach((checkbox) => checkbox.addEventListener('change', updateTemplateSelection));
+    templateForm.addEventListener('submit', () => modal.close());
     modal.addEventListener('click', (event) => { if (event.target === modal) modal.close(); });
     updateTemplateSelection();
     if (clientSearch.value) selectUploadClient();

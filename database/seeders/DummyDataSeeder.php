@@ -64,7 +64,7 @@ class DummyDataSeeder extends Seeder
             }
         }
         foreach (range(1, 5) as $i) {
-            $this->record('clients', ['client_code' => sprintf('DEMO-C%02d', $i)], ['client_name' => 'Demo Retail Client '.$i, 'prefix' => sprintf('DEMO-C%02d-', $i), 'last_value' => 0, 'address' => '100 Sample Retail Street, Quezon City', 'focal_person' => 'Demo Contact '.$i, 'contact_number' => '09000000000', 'is_active' => true]);
+            $this->record('clients', ['client_code' => sprintf('DEMO-C%02d', $i)], ['client_name' => 'Demo Retail Client '.$i, 'prefix' => sprintf('DEMO-C%02d-', $i), 'last_value' => 0, 'full_address' => '100 Sample Retail Street, Quezon City', 'focal_person' => 'Demo Contact '.$i, 'contact_number' => '09000000000', 'is_active' => true]);
         }
         $staff = DB::table('roles')->where('slug', 'staff')->value('id');
         foreach (range(1, 3) as $i) {
@@ -105,11 +105,13 @@ class DummyDataSeeder extends Seeder
             $this->record('status_logs', ['waybill_number' => $number, 'status' => 'for_pickup'], ['reference' => 'Demo seed', 'comment' => 'Sample waybill created', 'created_by' => $admin]);
             if ($status !== 'for_pickup') $this->record('status_logs', ['waybill_number' => $number, 'status' => $status], ['reference' => 'Demo seed', 'comment' => 'Sample processing stage', 'created_by' => $admin]);
         }
-        foreach (['pickups' => [[7, 8, 9], [13, 14, 15]], 'inbounds' => [[25, 26, 27]], 'transfers' => [[31, 32, 33]], 'deliveries' => [[37, 38, 39], [43, 44, 45]], 'returns' => [[49, 50, 51], [55, 56, 57]]] as $table => $groups) {
+        foreach (['pickups' => [[7, 8, 9], [13, 14, 15]], 'inbounds' => [[25, 26, 27]], 'transfers' => [[31, 32, 33]], 'deliveries' => [[37], [38], [39], [40], [41], [42], [43, 44, 45]], 'returns' => [[49, 50, 51], [55, 56, 57]]] as $table => $groups) {
             foreach ($groups as $index => $group) {
                 $numbers = array_map(fn ($i) => sprintf('DEMO-WB-%05d', $i), $group);
                 $manifest = $this->record($table, ['waybill_numbers' => json_encode($numbers)], ['created_by' => $admin]);
-                if ($index === 0 || $table === 'inbounds') continue;
+                $isDispatched = $table === 'deliveries' ? $index === array_key_last($groups) : $index > 0;
+                if (! $isDispatched || $table === 'inbounds') continue;
+                DB::table($table)->where('id', $manifest)->update(['status' => 'dispatched']);
                 $details = ['pickups' => 'pickup_details', 'deliveries' => 'delivery_details', 'returns' => 'return_details'][$table];
                 foreach ($numbers as $number) {
                     if (! DB::table($details)->where(['dm' => $manifest, 'waybill_number' => $number])->exists()) DB::table($details)->insert(['dm' => $manifest, 'waybill_number' => $number, 'status' => 'dispatched', 'created_at' => now()]);
@@ -153,7 +155,9 @@ class DummyDataSeeder extends Seeder
                 $employee = DB::table('personnel')->where('employee_id', sprintf('DEMO-EMP-%03d', $index * 2 + $offset + 1))->value('id');
                 $people[] = ['employee_id' => $employee, 'designation' => $designation];
             }
-            $service->save($trip, ['version' => 0, 'vehicle_id' => $vehicle->id, 'tariff_id' => $tariff, 'trip_no' => (string) ($index % 5 + 1), 'trip_type' => 'Local Delivery', 'payment_type' => 'Per Trip', 'drops_number' => 4, 'personnels' => $people, 'segments' => [['origin_id' => $origin, 'destination_id' => $destination, 'total_distance' => 150]], 'fuel_purchases' => [['fuel_supplier' => $supplier, 'liters_required' => 30, 'price_per_liter' => 58, 'remarks' => 'Demo fuel purchase']], 'costs' => [['cost_code' => $cost, 'cost_amount' => 350, 'remarks' => 'Demo toll cost']], 'disbursements' => []], $admin);
+            $waybill = sprintf('DEMO-WB-%05d', 37 + $index);
+            $manifest = DB::table('deliveries')->where('waybill_numbers', json_encode([$waybill]))->value('id');
+            $service->save($trip, ['version' => 0, 'vehicle_id' => $vehicle->id, 'tariff_id' => $tariff, 'trip_no' => (string) ($index % 5 + 1), 'trip_type' => 'Local Delivery', 'payment_type' => 'Per Trip', 'drops_number' => 4, 'waybills' => [['dm_id' => $manifest, 'waybill_number' => $waybill, 'quantity' => 2, 'kilogram' => 3, 'cbm' => 0.09, 'drops_number' => 1]], 'personnels' => $people, 'segments' => [['origin_id' => $origin, 'destination_id' => $destination, 'total_distance' => 150]], 'fuel_purchases' => [['fuel_supplier' => $supplier, 'liters_required' => 30, 'price_per_liter' => 58, 'remarks' => 'Demo fuel purchase']], 'costs' => [['cost_code' => $cost, 'cost_amount' => 350, 'remarks' => 'Demo toll cost']], 'disbursements' => []], $admin);
             if (in_array($status, ['Dispatched', 'Completed'])) $service->dispatch($trip, $admin, 'Demo dispatch');
             if ($status === 'Completed') $service->complete($trip, $admin, 'Demo delivery completed');
             if ($status === 'Cancelled') $service->updateStatus($trip, 'Cancelled', 'Demo cancellation', $trip->version, $admin);

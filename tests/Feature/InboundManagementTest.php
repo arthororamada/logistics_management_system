@@ -42,7 +42,7 @@ class InboundManagementTest extends TestCase
     {
         $this->actingAs($this->administrator())->get(route('inbound.index'))
             ->assertOk()->assertSee('Document Manifests')->assertSee('Inbound')
-            ->assertSee('Add Waybill Number/s')->assertSee('accepted_by_courier')->assertSee('Accept to Warehouse')
+            ->assertSee('Add Waybill Number/s')->assertSee('for_pickup')->assertSee('Accept to Warehouse')
             ->assertDontSee('Saved Inbound Manifests');
         $this->assertDatabaseHas('permissions', ['slug' => 'inbound.view', 'group' => 'Document Manifests']);
         $this->assertDatabaseHas('permissions', ['slug' => 'inbound.create']);
@@ -54,7 +54,7 @@ class InboundManagementTest extends TestCase
             $this->package($number);
         }
         $this->package('WB-002');
-        $this->package('WB-002', 'accepted_by_courier', true);
+        $this->package('WB-002', 'for_pickup', true);
         $this->package('UNSELECTED');
         $this->actingAs($this->administrator())->withSession(['pickup.waybill_numbers' => ['PICKUP-ONLY']])
             ->post(route('inbound.waybills.add'), ['waybill_numbers' => "001234\r\nWB-002,WB-003;WB-004\t001234"])
@@ -72,15 +72,15 @@ class InboundManagementTest extends TestCase
             $this->assertStatusLogged($number, 'accepted_to_warehouse', $this->administrator()->id);
         }
         $this->assertDatabaseCount('status_logs', 5);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-002', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_by_courier']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNSELECTED', 'package_status' => 'accepted_by_courier']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-002', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'for_pickup']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNSELECTED', 'package_status' => 'for_pickup']);
     }
 
     public function test_missing_deleted_and_wrong_status_waybills_reject_the_batch(): void
     {
         $this->package('VALID');
         $this->package('NEW');
-        $this->package('DELETED', 'accepted_by_courier', true);
+        $this->package('DELETED', 'for_pickup', true);
         $this->package('WRONG', 'accepted_to_warehouse');
         $this->actingAs($this->administrator())->withSession(['inbound.waybill_numbers' => ['VALID']])
             ->from(route('inbound.index'))->post(route('inbound.waybills.add'), [
@@ -88,7 +88,7 @@ class InboundManagementTest extends TestCase
             ])->assertRedirect(route('inbound.index'))->assertSessionHasErrors('waybill_numbers')
             ->assertSessionHas('inbound.waybill_numbers', ['VALID']);
         $this->get(route('inbound.index'))->assertSee('Waybill MISSING')->assertSee('Waybill DELETED')
-            ->assertSee('Waybill WRONG must have package status accepted_by_courier');
+            ->assertSee('Waybill WRONG must have package status for_pickup');
         $this->assertDatabaseCount('inbounds', 0);
     }
 
@@ -128,7 +128,7 @@ class InboundManagementTest extends TestCase
         DB::table('packages')->where('waybill_number', 'CHANGED')->update(['package_status' => 'pending']);
         $this->post(route('inbound.store'))->assertSessionHasErrors('waybill_numbers')
             ->assertSessionHas('inbound.waybill_numbers', ['VALID', 'CHANGED']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'accepted_by_courier']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_pickup']);
         $this->assertDatabaseCount('inbounds', 0);
     }
 
@@ -155,7 +155,7 @@ class InboundManagementTest extends TestCase
         $this->delete(route('inbound.waybills.remove'))->assertForbidden();
     }
 
-    private function package(string $number, string $status = 'accepted_by_courier', bool $deleted = false): void
+    private function package(string $number, string $status = 'for_pickup', bool $deleted = false): void
     {
         DB::table('packages')->insert([
             'waybill_number' => $number, 'package_id' => 'PKG-'.$number,
