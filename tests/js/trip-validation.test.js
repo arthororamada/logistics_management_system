@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tripSaveErrors, tripErrorSections, tripErrorSection, updateTripSectionErrors, tripHasUnsavedChanges } from '../../resources/js/trip-validation.js';
 import { readTripResponse } from '../../resources/js/trip-dialogs.js';
 
-const complete = () => ({ trip_no: '1', trip_type: 'Delivery', payment_type: 'Cash', tariff_id: 1, vehicle_id: 1, personnels: [{ employee_id: 1, designation: 'Driver' }], segments: [{ origin_id: 1, destination_id: 2, total_distance: 10 }], costs: [{ cost_code: 1, cost_amount: 0 }] });
+const complete = () => ({ waybills: [{ dm_id: 1, waybill_number: 'WB-1', drops_number: 1, quantity: 1, kilogram: 1, cbm: 0.5 }], trip_no: '1', trip_type: 'Delivery', payment_type: 'Cash', tariff_id: 1, vehicle_id: 1, personnels: [{ employee_id: 1, designation: 'Driver' }], segments: [{ origin_id: 1, destination_id: 2, total_distance: 10 }], costs: [{ cost_code: 1, cost_amount: 0 }] });
 
 test('trip number accepts only dropdown selections and groups failures under general information', () => {
     for (const trip_no of ['1', '2', '3', '4', '5', 1, 2, 3, 4, 5]) {
@@ -30,8 +30,8 @@ test('dispatch requires saving changed information and allows unchanged saved in
 test('save collects every incomplete section and deduplicates multiple field failures', () => {
     const errors = tripSaveErrors({}, { 'costs.0.cost_code': ['Required'], 'costs.0.cost_amount': ['Required'], 'costs.1.cost_amount': ['Required'] });
     const sections = tripErrorSections(errors);
-    assert.deepEqual(Object.keys(sections), ['general', 'vehicle', 'segments', 'personnels', 'costs']);
-    assert.equal(new Set(Object.values(sections)).size, 5);
+    assert.deepEqual(Object.keys(sections), ['general', 'vehicle', 'segments', 'personnels', 'waybills', 'costs']);
+    assert.equal(new Set(Object.values(sections)).size, 6);
     assert.equal(Object.values(sections).filter(message => message.startsWith('General Trip Information')).length, 1);
 });
 

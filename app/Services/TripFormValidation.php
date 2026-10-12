@@ -13,6 +13,7 @@ class TripFormValidation
         'vehicle' => 'Vehicle is required. Please select a vehicle.',
         'segments' => 'Route is required. Please select or configure a valid route with a positive distance.',
         'personnels' => 'Personnel is required. Please assign the required personnel, including a driver.',
+        'waybills' => 'Waybill Information is required. Please complete all six fields for each waybill.',
         'costs' => 'Additional Trip Cost is required.',
         'disbursements' => 'Please correct the invalid fields in Disbursement Information.',
     ];
@@ -25,6 +26,7 @@ class TripFormValidation
             'vehicle_id' => 'vehicle',
             'segments', 'trip_route_origin', 'trip_route_destination', 'total_distance' => 'segments',
             'personnels' => 'personnels',
+            'waybills' => 'waybills',
             'costs', 'fuel_purchases', 'fuelPurchases' => 'costs',
             'disbursements', 'gcash_number' => 'disbursements',
             default => 'general',

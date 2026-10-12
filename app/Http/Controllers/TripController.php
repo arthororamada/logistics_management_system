@@ -76,6 +76,7 @@ class TripController extends Controller
         $this->authorizeTrip($request, $trip);
         abort_if($trip->current_status === 'Cancelled', 403, 'Cancelled trips cannot be viewed.');
         $data = $this->documentData($trip) + [
+            'pendingManifests' => app(\App\Services\TripWaybills::class)->pending(old('trip_type', $trip->trip_type)),
             'assignmentAvailability' => app(TripAssignmentEligibility::class)->availability($trip),
             'vehicles' => Vehicle::orderBy('body_number')->get(),
             'tripTypes' => TripType::where('is_active', true)->get(),
@@ -104,6 +105,14 @@ class TripController extends Controller
         return view('trips.show', $data);
     }
 
+    public function manifests(Request $request, Trip $trip, \App\Services\TripWaybills $waybills)
+    {
+        $this->authorizeTrip($request, $trip);
+        $data = $request->validate(['trip_type' => 'required|string|max:150']);
+
+        return response()->json($waybills->pending($data['trip_type']))->header('Cache-Control', 'no-store, private');
+    }
+
     public function availability(Request $request, Trip $trip, TripAssignmentEligibility $eligibility)
     {
         $this->authorizeTrip($request, $trip);
@@ -126,7 +135,7 @@ class TripController extends Controller
     {
         $this->authorizeTrip($request, $trip);
         $rules = ['reason' => 'nullable|string|max:2000', 'version' => 'sometimes|required|integer|min:0'];
-        foreach (['vehicle_id', 'tariff_id', 'trip_no', 'trip_type', 'payment_type', 'drops_number', 'gcash_number', 'personnels', 'segments', 'fuel_purchases', 'costs', 'disbursements'] as $field) {
+        foreach (['vehicle_id', 'tariff_id', 'trip_no', 'trip_type', 'payment_type', 'drops_number', 'gcash_number', 'personnels', 'segments', 'fuel_purchases', 'costs', 'disbursements', 'waybills'] as $field) {
             $rules[$field] = 'prohibited';
         }
         $data = $request->validate($rules, ['prohibited' => 'Save trip information before dispatching. Dispatch Truck uses the saved trip only.']);
@@ -173,7 +182,7 @@ class TripController extends Controller
 
     private function documentData(Trip $trip): array
     {
-        $trip->load(['personnels', 'segments', 'fuelPurchases', 'costs', 'history']);
+        $trip->load(['personnels', 'segments', 'fuelPurchases', 'costs', 'history', 'waybills']);
 
         return ['trip' => $trip, 'employees' => Personnel::all()->keyBy('id'), 'suppliers' => FuelSupplier::all()->keyBy('id'), 'costCodes' => OtherCost::all()->keyBy('id'), 'users' => User::whereIn('id', $trip->history->pluck('created_by')->push($trip->approved_by))->get()->keyBy('id'), 'selectedTripRate' => $trip->tariff_snapshot ? (object) $trip->tariff_snapshot : $trip->tripRate, 'financialSummary' => app(TripService::class)->financialSummary($trip)];
     }

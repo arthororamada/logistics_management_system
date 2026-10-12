@@ -5,6 +5,7 @@ export const tripSectionMessages = {
     vehicle: 'Vehicle is required. Please select a vehicle.',
     segments: 'Route is required. Please select or configure a valid route with a positive distance.',
     personnels: 'Personnel is required. Please assign the required personnel, including a driver.',
+    waybills: 'Waybill Information is required. Please complete all six fields for each waybill.',
     costs: 'Additional Trip Cost is required.',
     disbursements: 'Please correct the invalid fields in Disbursement Information.',
 };
@@ -13,6 +14,7 @@ export function tripErrorSection(field) {
     const root = field.split('.')[0];
     if (root === 'vehicle_id') return 'vehicle';
     if (['segments', 'trip_route_origin', 'trip_route_destination', 'total_distance'].includes(root)) return 'segments';
+    if (root === 'waybills') return 'waybills';
     if (root === 'personnels') return 'personnels';
     if (['costs', 'fuel_purchases', 'fuelPurchases'].includes(root)) return 'costs';
     if (['disbursements', 'gcash_number'].includes(root)) return 'disbursements';
@@ -33,6 +35,7 @@ export function tripSaveErrors(payload, invalidFields = {}) {
         errors.trip_no = ['Please select a trip number from 1 to 5.'];
     }
     if (!payload.personnels?.some(person => person.designation?.toLowerCase() === 'driver')) errors.personnels = [];
+    if (!payload.waybills?.length) errors.waybills = [tripSectionMessages.waybills];
     const distance = payload.segments?.reduce((sum, row) => sum + Number(row.total_distance || 0), 0) || 0;
     if (!payload.segments?.length || !Number.isFinite(distance) || distance <= 0) errors.segments = [];
     if (!payload.costs?.length && !payload.fuel_purchases?.length) errors.costs = [tripSectionMessages.costs];
@@ -56,9 +59,9 @@ export function updateTripSectionErrors(current, section, local) {
 }
 
 export function tripFormPayload(editor) {
-    const payload = Object.fromEntries(['personnels', 'segments', 'fuel_purchases', 'costs', 'disbursements'].map(name => [name, []]));
+    const payload = Object.fromEntries(['personnels', 'segments', 'fuel_purchases', 'costs', 'disbursements', 'waybills'].map(name => [name, []]));
     for (const [name, value] of new FormData(editor)) {
-        const match = name.match(/^(personnels|segments|fuel_purchases|costs|disbursements)\[(\d+)\]\[(\w+)\]$/);
+        const match = name.match(/^(personnels|segments|fuel_purchases|costs|disbursements|waybills)\[(\d+)\]\[(\w+)\]$/);
         if (match) {
             payload[match[1]][Number(match[2])] ??= {};
             payload[match[1]][Number(match[2])][match[3]] = value === '' ? null : value;

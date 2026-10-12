@@ -22,6 +22,7 @@ class TripService
         abort_unless($trip->current_status === 'Open', 409, 'Only open trips can be edited.');
         abort_unless((int) $data['version'] === (int) $trip->version, 409, 'This trip changed. Reload before saving.');
         app(TripAssignmentEligibility::class)->validate($trip, $data['vehicle_id'] ?? null, array_column($data['personnels'], 'employee_id'));
+        app(TripWaybills::class)->validate($trip, $data['trip_type'], $data['waybills']);
         $this->prepareFuelCosts($trip, $data, $userId);
         $trip->fill(Arr::only($data, ['vehicle_id', 'tariff_id', 'trip_no', 'trip_type', 'payment_type', 'drops_number', 'gcash_number']));
         $vehicle = $trip->vehicle_id ? Vehicle::findOrFail($trip->vehicle_id) : null;
@@ -173,7 +174,7 @@ class TripService
             unset($cost['cost_amount'], $cost['shipping_line_name']);
         }
         unset($cost);
-        foreach (['personnels' => 'personnels', 'segments' => 'segments', 'fuel_purchases' => 'fuelPurchases', 'costs' => 'costs'] as $key => $relation) {
+        foreach (['personnels' => 'personnels', 'segments' => 'segments', 'fuel_purchases' => 'fuelPurchases', 'costs' => 'costs', 'waybills' => 'waybills'] as $key => $relation) {
             $submittedIds = array_filter(array_column($data[$key], 'id'));
             if ($trip->$relation()->whereIn('id', $submittedIds)->count() !== count($submittedIds)) {
                 throw ValidationException::withMessages([$key => 'A related record does not belong to this trip.']);
@@ -237,6 +238,9 @@ class TripService
         if (! $trip->personnels()->whereRaw('LOWER(designation) = ?', ['driver'])->exists()) {
             $errors['personnels'] = TripFormValidation::MESSAGES['personnels'];
         }
+        if (! $trip->waybills()->exists()) {
+            $errors['waybills'] = TripFormValidation::MESSAGES['waybills'];
+        }
         if (! $trip->segments()->exists() || $trip->total_distance <= 0) {
             $errors['segments'] = TripFormValidation::MESSAGES['segments'];
         }
@@ -277,6 +281,7 @@ class TripService
         if ($errors) {
             throw ValidationException::withMessages($errors);
         }
+        app(TripWaybills::class)->dispatch($trip, $userId);
         $this->transition($trip, 'Dispatched', $userId, $reason);
     }
 

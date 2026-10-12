@@ -20,7 +20,7 @@
 @if($errors->any())<div class="alert alert-error trip-validation-errors" role="alert">@foreach($errors->all() as $error)<div>{{ $error }}</div>@endforeach</div>@endif
 <div class="trip-workspace {{ $trip->current_status==='Open' && auth()->user()->hasPermission('trips.update') ? '' : 'trip-readonly' }}">
 @if($trip->current_status==='Open' && auth()->user()->hasPermission('trips.update'))
-<form method="POST" action="{{ route('trips.update',$trip) }}" id="trip-form" novalidate data-trip-editor data-availability-url="{{ route('trips.availability',$trip) }}">
+<form method="POST" action="{{ route('trips.update',$trip) }}" id="trip-form" novalidate data-manifests-url="{{ route('trips.manifests',$trip) }}" data-trip-editor data-availability-url="{{ route('trips.availability',$trip) }}">
     @csrf @method('PUT')<input type="hidden" name="version" value="{{ $trip->version }}">
     <x-card title="General Trip Information" data-trip-section="general" :collapsible="true" :collapsed="true" id="trip-section-general">
         <div class="trip-form-grid">
@@ -57,6 +57,7 @@
         <template id="trip-template-{{ $collection }}">@include('trips.row',['collection'=>$collection,'row'=>[],'index'=>'__INDEX__'])</template>
         @if($collection==='segments')<p>Saved total distance: {{ number_format($trip->total_distance,2) }} km.</p>@endif
     </x-card>
+    @if($collection==='personnels') @include('trips.waybills') @endif
     @endforeach
     <x-card title="Disbursement Information (Cash Released / GCash)" data-trip-section="disbursements" :collapsible="true" :collapsed="true" id="trip-section-disbursements">
         <div class="form-group"><label for="gcash_number">GCash number</label><input class="form-input" id="gcash_number" name="gcash_number" value="{{ old('gcash_number',$trip->gcash_number) }}" maxlength="150"></div>

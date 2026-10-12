@@ -3,6 +3,7 @@ import { enhanceTripSelects, refreshTripSelects, expandTripSection } from './tri
 import { notifications } from './notifications';
 import { createTripDialogs, withTripSubmissionLock, readTripResponse } from './trip-dialogs';
 import { syncTripCost } from './trip-costs';
+import { initializeTripWaybills } from './trip-waybills';
 import { applyTripAvailability, readTripAvailability } from './trip-eligibility';
 import { createTripValidation, tripSaveErrors, tripFormPayload, invalidTripFields, tripHasUnsavedChanges } from './trip-validation';
 
@@ -187,6 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         editor.addEventListener('invalid', (event) => expandTripSection(event.target), true);
         savedEditorPayload = tripFormPayload(editor);
+        initializeTripWaybills(editor, field => validation.update(field));
         editor.addEventListener('submit', async (event) => {
             event.preventDefault();
             await withTripSubmissionLock(editor, async () => {

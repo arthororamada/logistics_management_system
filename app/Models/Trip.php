@@ -41,4 +41,9 @@ class Trip extends Model
     {
         return $this->hasMany(TripStatus::class, 'trip_id', 'trip_id')->orderBy('id');
     }
+
+    public function waybills(): HasMany
+    {
+        return $this->hasMany(TripDetail::class, 'trip_id', 'trip_id')->orderBy('id');
+    }
 }

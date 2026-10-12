@@ -358,7 +358,7 @@ class TripsManagementTest extends TestCase
         @$document->loadHTML('<?xml encoding="UTF-8">'.$response->getContent());
         $xpath = new \DOMXPath($document);
         $sections = $xpath->query('//form[@id="trip-form"]/section[@data-trip-section]');
-        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'costs', 'disbursements'], array_map(fn ($section) => $section->getAttribute('data-trip-section'), iterator_to_array($sections)));
+        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'waybills', 'costs', 'disbursements'], array_map(fn ($section) => $section->getAttribute('data-trip-section'), iterator_to_array($sections)));
         $this->assertEquals(0, $xpath->query('//*[@data-trip-collection="fuel_purchases" or @id="trip-template-fuel_purchases"]')->length);
         $this->assertEquals(1, $xpath->query('//section[@data-trip-section="costs"]//input[contains(@name,"[fuel_purchase_id]")]')->length);
         foreach ($sections as $section) {
@@ -936,6 +936,7 @@ class TripsManagementTest extends TestCase
         $this->postJson(route('trips.complete', $first))->assertOk();
         $this->getJson(route('trips.availability', $second))->assertJsonPath('vehicles.'.$payload['vehicle_id'], null)
             ->assertJsonPath('personnels.'.$payload['personnels'][0]['employee_id'], null);
+        $payload['waybills'] = $this->payload()['waybills'];
         $this->putJson(route('trips.update', $second), $payload)->assertOk();
         $this->postJson(route('trips.dispatch', $second))->assertOk();
     }
@@ -951,6 +952,7 @@ class TripsManagementTest extends TestCase
             Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Maintenance']);
             $this->putJson(route('trips.update', $second), $payload)->assertUnprocessable()->assertJsonValidationErrors('vehicle_id');
             Vehicle::findOrFail($payload['vehicle_id'])->update(['vehicle_status' => 'Running']);
+            $payload['waybills'] = $this->payload()['waybills'];
             $this->saveAndDispatch($second, $payload)->assertOk();
         }
     }
@@ -960,7 +962,7 @@ class TripsManagementTest extends TestCase
         $trip = $this->draft();
         $response = $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable();
         $sections = $response->json('sections');
-        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'costs'], array_keys($sections));
+        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'waybills', 'costs'], array_keys($sections));
         $this->assertEquals(count($sections), count(array_unique($sections)));
         $this->assertEquals(implode("\n", $sections), $response->json('message'));
         $this->assertStringNotContainsString('Required before dispatch.', $response->getContent());
@@ -975,7 +977,7 @@ class TripsManagementTest extends TestCase
             'version' => 0, 'drops_number' => 0, 'personnels' => [], 'segments' => [], 'costs' => [[]],
         ])->assertUnprocessable()->assertJsonValidationErrors(['trip_no', 'trip_type', 'payment_type', 'tariff_id', 'vehicle_id', 'segments', 'personnels', 'costs.0.cost_code', 'costs.0.cost_amount']);
         $sections = $response->json('sections');
-        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'costs'], array_keys($sections));
+        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'waybills', 'costs'], array_keys($sections));
         foreach ($sections as $message) {
             $this->assertEquals(1, substr_count($response->json('message'), $message));
         }
@@ -1158,6 +1160,147 @@ class TripsManagementTest extends TestCase
         $this->assertEquals(1, $xpath->query('//template[@id="trip-template-costs"]//input[contains(@name,"[cost_amount]") and @required and @value=""]')->length);
     }
 
+    public function test_waybill_manifests_are_filtered_and_dispatch_updates_only_the_trip_packages_for_each_type(): void
+    {
+        foreach (['Delivery' => \App\Models\Delivery::class, 'Pickup' => \App\Models\Pickup::class, 'Transfer' => \App\Models\Transfer::class, 'Return' => \App\Models\ReturnManifest::class] as $type => $model) {
+            $trip = $this->draft();
+            $payload = $this->payload();
+            TripType::firstOrCreate(['trip_type' => $type], ['is_active' => true]);
+            TripRate::findOrFail($payload['tariff_id'])->update(['trip_type' => $type]);
+            $payload['trip_type'] = $type;
+            $prefix = 'WB-'.Str::random(10);
+            $clientData = ['client_code' => $prefix, 'client_name' => 'Waybill test client', 'prefix' => Str::random(5), 'is_active' => true,
+                'address' => 'Test address', 'full_address' => 'Test address', 'focal_person' => 'Test contact', 'contact_number' => '123'];
+            $clientId = \Illuminate\Support\Facades\DB::table('clients')->insertGetId(array_intersect_key($clientData,
+                array_flip(\Illuminate\Support\Facades\Schema::getColumnListing('clients'))));
+            $numbers = [$prefix.'-1', $prefix.'-2', $prefix.'-3'];
+            $manifest = $model::create(['waybill_numbers' => $numbers, 'created_by' => $this->admin->id]);
+            $unrelated = $model::create(['waybill_numbers' => [$prefix.'-other'], 'created_by' => $this->admin->id]);
+            $dispatched = $model::create(['waybill_numbers' => [$prefix.'-old'], 'status' => 'dispatched', 'created_by' => $this->admin->id]);
+            $detailsTable = ['Delivery' => 'delivery_details', 'Pickup' => 'pickup_details', 'Transfer' => 'transfer_details', 'Return' => 'return_details'][$type];
+            \Illuminate\Support\Facades\DB::table($detailsTable)->insert([
+                ['dm' => $manifest->id, 'waybill_number' => $numbers[0], 'status' => 'cancelled'],
+                ['dm' => $unrelated->id, 'waybill_number' => $prefix.'-other', 'status' => 'cancelled'],
+            ]);
+            $records = $this->getJson(route('trips.manifests', $trip, false).'?trip_type='.$type)->assertOk()->json();
+            $ids = array_column($records, 'id');
+            $this->assertContains($manifest->id, $ids);
+            $this->assertNotContains($dispatched->id, $ids);
+            $this->assertSame($numbers, collect($records)->firstWhere('id', $manifest->id)['waybill_numbers']);
+            foreach (array_merge($numbers, [$prefix.'-other']) as $number) {
+                \Illuminate\Support\Facades\DB::table('packages')->insert([
+                    'waybill_number' => $number, 'package_id' => 'PKG-'.$number,
+                    'buyer_name' => 'Test Buyer', 'buyer_full_address' => 'Test Address',
+                    'package_status' => 'for_pickup',
+                    'client_id' => $clientId, 'order_number' => $number, 'package_description' => 'Test package',
+                    'package_size' => 'Small', 'package_length' => 1, 'package_width' => 1, 'package_height' => 1,
+                    'package_weight' => 1, 'payment_type' => 'Cash', 'total_price' => 1, 'declared_value' => 1,
+                    'buyer_mobile' => '123', 'buyer_province' => 'Test', 'buyer_city' => 'Test', 'buyer_barangay' => 'Test',
+                ]);
+            }
+            $payload['waybills'] = array_map(fn ($number) => ['dm_id' => $manifest->id, 'waybill_number' => $number, 'drops_number' => 1, 'quantity' => 2, 'kilogram' => 3, 'cbm' => 0.25], $numbers);
+            $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+            $this->assertCount(3, $trip->waybills()->get());
+            $this->assertSame('pending', $manifest->fresh()->status);
+            $this->assertDatabaseHas($detailsTable, ['dm' => $manifest->id, 'waybill_number' => $numbers[0], 'status' => 'cancelled']);
+            $this->assertSame(1, \Illuminate\Support\Facades\DB::table($detailsTable)->where('dm', $manifest->id)->count());
+            $this->get(route('trips.show', $trip))->assertOk()->assertSee('Waybill Information')->assertSee($numbers[2]);
+            $this->postJson(route('trips.dispatch', $trip))->assertOk();
+            $this->assertSame('dispatched', $manifest->fresh()->status);
+            $this->assertSame('pending', $unrelated->fresh()->status);
+            foreach ($numbers as $number) {
+                $this->assertDatabaseHas('trip_details', ['trip_id' => $trip->trip_id, 'dm_id' => $manifest->id, 'waybill_number' => $number]);
+                $this->assertDatabaseHas($detailsTable, ['dm' => $manifest->id, 'waybill_number' => $number, 'status' => 'dispatched']);
+                $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'package_status' => 'delivery_dispatched']);
+                $this->assertDatabaseHas('status_logs', ['waybill_number' => $number, 'status' => 'delivery_dispatched']);
+            }
+            $this->assertDatabaseHas('packages', ['waybill_number' => $prefix.'-other', 'package_status' => 'for_pickup']);
+            $this->assertSame(3, \Illuminate\Support\Facades\DB::table($detailsTable)->where('dm', $manifest->id)->count());
+            $this->assertDatabaseHas($detailsTable, ['dm' => $unrelated->id, 'waybill_number' => $prefix.'-other', 'status' => 'cancelled']);
+            $this->postJson(route('trips.dispatch', $trip))->assertStatus(409);
+            $this->assertSame(3, \Illuminate\Support\Facades\DB::table($detailsTable)->where('dm', $manifest->id)->count());
+            $this->get(route('trips.print', $trip))->assertOk()->assertSee($numbers[0])->assertSee($numbers[1])->assertSee($numbers[2]);
+        }
+    }
+
+    public function test_waybill_fields_membership_and_pending_status_are_required_and_failures_roll_back(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        foreach (['dm_id', 'waybill_number', 'drops_number', 'quantity', 'kilogram', 'cbm'] as $field) {
+            $invalid = $payload;
+            unset($invalid['waybills'][0][$field]);
+            $this->putJson(route('trips.update', $trip), $invalid)->assertUnprocessable()->assertJsonValidationErrors('waybills.0.'.$field);
+        }
+        $invalid = $payload;
+        $invalid['waybills'][0]['waybill_number'] = 'WRONG-SOURCE';
+        $this->putJson(route('trips.update', $trip), $invalid)->assertUnprocessable()->assertJsonValidationErrors('waybills.0.waybill_number');
+        $invalid = $payload;
+        $invalid['waybills'][] = $invalid['waybills'][0];
+        $this->putJson(route('trips.update', $trip), $invalid)->assertUnprocessable();
+        $manifest = \App\Models\Delivery::findOrFail($payload['waybills'][0]['dm_id']);
+        $manifest->update(['status' => 'completed']);
+        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('waybills.0.dm_id');
+        $this->assertSame(0, $trip->waybills()->count());
+        $this->assertSame(0, $trip->fresh()->version);
+        $manifest->update(['status' => 'pending']);
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $manifest->update(['status' => 'dispatched']);
+        $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable()->assertJsonValidationErrors('waybills.0.dm_id');
+        $this->assertSame('Open', $trip->fresh()->current_status);
+        $this->assertSame(1, $trip->history()->count());
+    }
+
+    public function test_waybill_rows_can_be_updated_and_removed_and_foreign_ids_cannot_be_saved(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $manifest = \App\Models\Delivery::findOrFail($payload['waybills'][0]['dm_id']);
+        $manifest->update(['waybill_numbers' => [$payload['waybills'][0]['waybill_number'], 'REMOVE-ME']]);
+        $payload['waybills'][] = array_replace($payload['waybills'][0], ['waybill_number' => 'REMOVE-ME']);
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $row = $trip->waybills()->first();
+        $payload['version'] = $trip->fresh()->version;
+        $payload['waybills'] = [array_replace($payload['waybills'][0], ['id' => $row->id, 'quantity' => 9])];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertSame(1, $trip->waybills()->count());
+        $this->assertSame(9, $row->fresh()->quantity);
+        $this->assertSame($this->admin->id, $row->fresh()->updated_by);
+        $foreign = $this->draft();
+        $payload['version'] = 0;
+        $this->putJson(route('trips.update', $foreign), $payload)->assertUnprocessable()->assertJsonValidationErrors('waybills');
+        $this->assertSame(0, $foreign->waybills()->count());
+    }
+
+    public function test_trip_details_schema_has_only_requested_columns(): void
+    {
+        $expected = ['id', 'trip_id', 'dm_id', 'waybill_number', 'quantity', 'kilogram', 'cbm', 'drops_number', 'created_by', 'updated_by', 'created_at', 'updated_at'];
+        $actual = \Illuminate\Support\Facades\Schema::getColumnListing('trip_details');
+        sort($expected);
+        sort($actual);
+        $this->assertSame($expected, $actual);
+    }
+
+    public function test_pending_dm_selection_supports_local_delivery_and_lowercase_types(): void
+    {
+        $trip = $this->draft();
+        foreach (['Local Delivery' => \App\Models\Delivery::class, 'pickup' => \App\Models\Pickup::class,
+            'transfer' => \App\Models\Transfer::class, 'return' => \App\Models\ReturnManifest::class] as $type => $model) {
+            $pending = $model::create(['waybill_numbers' => ['PENDING-'.Str::random(8)], 'created_by' => $this->admin->id]);
+            $completed = $model::create(['waybill_numbers' => ['COMPLETED-'.Str::random(8)], 'status' => 'completed', 'created_by' => $this->admin->id]);
+            $response = $this->getJson(route('trips.manifests', $trip).'?'.http_build_query(['trip_type' => $type]))->assertOk();
+            $this->assertContains($pending->id, array_column($response->json(), 'id'));
+            $this->assertNotContains($completed->id, array_column($response->json(), 'id'));
+            $trip->update(['trip_type' => $type]);
+            $page = $this->get(route('trips.show', $trip))->assertOk();
+            $document = new \DOMDocument;
+            @$document->loadHTML($page->getContent());
+            $xpath = new \DOMXPath($document);
+            $this->assertSame(1, $xpath->query('//select[@data-trip-dm]/option[@value="'.$pending->id.'"]')->length);
+            $this->assertSame(0, $xpath->query('//select[@data-trip-dm]/option[@value="'.$completed->id.'"]')->length);
+        }
+    }
+
     private function saveAndDispatch(Trip $trip, array $payload)
     {
         $this->putJson(route('trips.update', $trip), $payload)->assertOk();
@@ -1168,7 +1311,7 @@ class TripsManagementTest extends TestCase
     private function payload(): array
     {
         $suffix = Str::random(8);
-        $type = TripType::create(['trip_type' => 'Delivery '.$suffix, 'is_active' => true]);
+        $type = TripType::firstOrCreate(['trip_type' => 'Delivery'], ['is_active' => true]);
         $payment = TripPayment::create(['payment_type' => 'Cash '.$suffix, 'is_active' => true]);
         $vehicle = Vehicle::create(['warehouse_code' => 'TEST', 'vehicle_group' => 'Truck', 'body_number' => 'TEST-VAN-'.$suffix, 'vehicle_type' => 'Truck', 'plate_number' => 'TEST-'.$suffix, 'vehicle_make' => 'Isuzu', 'year_model' => 2024, 'engine_number' => 'ENG', 'chassi_number' => 'CHS', 'transmission' => 'Manual', 'fuel_type' => 'Diesel', 'fuel_capacity' => 100, 'fuel_usage_per_kilometer' => 0.25, 'engine_type' => 'Diesel', 'cargo_capacity' => 5000, 'vehicle_status' => 'Running']);
         $employee = Personnel::create(['employee_id' => 'EMP-'.$suffix, 'last_name' => 'Driver', 'first_name' => 'Test', 'address' => 'Manila', 'contact_number' => '123', 'position' => 'Driver', 'personnel_type' => 'Driver', 'warehouse_code' => 'TEST', 'is_active' => true]);
@@ -1182,6 +1325,8 @@ class TripsManagementTest extends TestCase
         $cost = OtherCost::create(['cost_code' => 'C-'.$suffix, 'cost_name' => 'Toll', 'is_cash_release' => true, 'is_active' => true]);
         $tariff = TripRate::create(['warehouse_code' => 'TEST', 'trip_type' => $type->trip_type, 'vehicle_group' => 'Truck', 'vehicle_type' => 'Truck', 'trip_number' => 'RATE-'.$suffix, 'payment_type' => $payment->payment_type, 'client_code' => 'TEST', 'route_origin' => 'Manila', 'farthest_destination' => 'Calamba', 'cargo_capacity' => 5000, 'minimum_drop' => 1, 'driver_rate' => 1000, 'helper_rate' => 500, 'driver_cash_released_percentage' => 60, 'helper_cash_released_percentage' => 50, 'additional_driver_rate' => 100, 'additional_helper_rate' => 50, 'bypass_fuel_liters' => 0, 'is_active' => true]);
 
-        return ['version' => 0, 'vehicle_id' => $vehicle->id, 'tariff_id' => $tariff->id, 'trip_no' => '1', 'trip_type' => $type->trip_type, 'payment_type' => $payment->payment_type, 'drops_number' => 2, 'trip_route_city' => 'Manila', 'trip_route_origin' => 'Manila', 'trip_route_destination' => 'Calamba', 'personnels' => [['employee_id' => $employee->id, 'designation' => 'Driver', 'salary' => 0]], 'segments' => [['origin_id' => $origin->id, 'destination_id' => $destination->id, 'total_distance' => 100]], 'fuel_purchases' => [['fuel_supplier' => $supplier->id, 'liters_required' => 10, 'price_per_liter' => 60]], 'costs' => [['cost_code' => $cost->id, 'costgroup' => 'Road', 'is_cash_released' => 1, 'released_amount' => 50, 'nonreleased_amount' => 0]]];
+        $manifest = \App\Models\Delivery::create(['waybill_numbers' => ['WB-'.$suffix], 'created_by' => $this->admin->id]);
+
+        return ['waybills' => [['dm_id' => $manifest->id, 'waybill_number' => 'WB-'.$suffix, 'drops_number' => 1, 'quantity' => 1, 'kilogram' => 1, 'cbm' => 0.5]], 'version' => 0, 'vehicle_id' => $vehicle->id, 'tariff_id' => $tariff->id, 'trip_no' => '1', 'trip_type' => $type->trip_type, 'payment_type' => $payment->payment_type, 'drops_number' => 2, 'trip_route_city' => 'Manila', 'trip_route_origin' => 'Manila', 'trip_route_destination' => 'Calamba', 'personnels' => [['employee_id' => $employee->id, 'designation' => 'Driver', 'salary' => 0]], 'segments' => [['origin_id' => $origin->id, 'destination_id' => $destination->id, 'total_distance' => 100]], 'fuel_purchases' => [['fuel_supplier' => $supplier->id, 'liters_required' => 10, 'price_per_liter' => 60]], 'costs' => [['cost_code' => $cost->id, 'costgroup' => 'Road', 'is_cash_released' => 1, 'released_amount' => 50, 'nonreleased_amount' => 0]]];
     }
 }

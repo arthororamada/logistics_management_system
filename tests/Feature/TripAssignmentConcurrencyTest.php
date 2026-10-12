@@ -22,7 +22,7 @@ class TripAssignmentConcurrencyTest extends TestCase
         if (DB::getDriverName() !== 'mysql') {
             $this->markTestSkipped('This integration test requires MySQL row locking.');
         }
-        foreach (['vehicle', 'personnel', 'both'] as $shared) {
+        foreach (['vehicle', 'personnel', 'both', 'manifest'] as $shared) {
             $this->assertConcurrentDispatch($shared);
         }
     }
@@ -36,34 +36,41 @@ class TripAssignmentConcurrencyTest extends TestCase
         $userId = User::where('username', 'admin')->firstOrFail()->id;
         $suffix = Str::random(10);
         try {
-            $rate = TripRate::create(['warehouse_code' => 'TEST', 'trip_type' => 'Test', 'vehicle_group' => 'Truck', 'vehicle_type' => 'Truck', 'trip_number' => 'CONCURRENT-'.$suffix, 'payment_type' => 'Cash', 'client_code' => 'TEST', 'route_origin' => 'Origin', 'farthest_destination' => 'Destination', 'is_active' => true]);
+            $rate = TripRate::create(['warehouse_code' => 'TEST', 'trip_type' => 'Delivery', 'vehicle_group' => 'Truck', 'vehicle_type' => 'Truck', 'trip_number' => 'CONCURRENT-'.$suffix, 'payment_type' => 'Cash', 'client_code' => 'TEST', 'route_origin' => 'Origin', 'farthest_destination' => 'Destination', 'is_active' => true]);
             $records[] = $rate;
             $route = Route::create(['province' => 'Test', 'city' => 'Test', 'brgy' => $suffix, 'longitued' => 120, 'latitude' => 14, 'is_active' => true]);
             $records[] = $route;
             $cost = OtherCost::create(['cost_code' => 'CONCURRENT-'.$suffix, 'cost_name' => 'Concurrent test cost', 'is_cash_release' => false, 'is_active' => true]);
             $records[] = $cost;
             for ($i = 0; $i < 2; $i++) {
-                $vehicle = $i && $shared !== 'personnel' ? $trips[0]->vehicle_id : null;
+                $vehicle = $i && in_array($shared, ['vehicle', 'both']) ? $trips[0]->vehicle_id : null;
                 if (! $vehicle) {
                     $record = Vehicle::create(['warehouse_code' => 'TEST', 'vehicle_group' => 'Truck', 'body_number' => "CONCURRENT-$suffix-$i", 'vehicle_type' => 'Truck', 'plate_number' => "CONCURRENT-$suffix-$i", 'vehicle_make' => 'Isuzu', 'year_model' => 2024, 'engine_number' => 'ENG', 'chassi_number' => 'CHS', 'transmission' => 'Manual', 'fuel_type' => 'Diesel', 'engine_type' => 'Diesel', 'fuel_capacity' => 100, 'fuel_usage_per_kilometer' => 0.25, 'cargo_capacity' => 5000, 'vehicle_status' => 'Running']);
                     $records[] = $record;
                     $vehicle = $record->id;
                 }
-                $employee = $i && $shared !== 'vehicle' ? $trips[0]->personnels()->first()->employee_id : null;
+                $employee = $i && in_array($shared, ['personnel', 'both']) ? $trips[0]->personnels()->first()->employee_id : null;
                 if (! $employee) {
                     $record = Personnel::create(['employee_id' => "CONCURRENT-$suffix-$i", 'first_name' => 'Concurrent', 'last_name' => 'Driver', 'address' => 'Test', 'contact_number' => '123', 'position' => 'Driver', 'personnel_type' => 'Driver', 'warehouse_code' => 'TEST', 'is_active' => true]);
                     $records[] = $record;
                     $employee = $record->id;
                 }
-                $trip = Trip::create(['trip_id' => "CONCURRENT-$suffix-$i", 'creation_key' => (string) Str::uuid(), 'vehicle_id' => $vehicle, 'tariff_id' => $rate->id, 'trip_no' => '1', 'trip_type' => 'Test', 'payment_type' => 'Cash', 'trip_route_origin' => 'Origin', 'trip_route_destination' => 'Destination', 'total_distance' => 1, 'current_status' => 'Open', 'created_by' => $userId, 'updated_by' => $userId]);
+                $trip = Trip::create(['trip_id' => "CONCURRENT-$suffix-$i", 'creation_key' => (string) Str::uuid(), 'vehicle_id' => $vehicle, 'tariff_id' => $rate->id, 'trip_no' => '1', 'trip_type' => 'Delivery', 'payment_type' => 'Cash', 'trip_route_origin' => 'Origin', 'trip_route_destination' => 'Destination', 'total_distance' => 1, 'current_status' => 'Open', 'created_by' => $userId, 'updated_by' => $userId]);
                 $trips[] = $trip;
+                $manifest = $i && $shared === 'manifest' ? $recordsManifest
+                    : \App\Models\Delivery::create(['waybill_numbers' => ["WB-$suffix-$i"], 'created_by' => $userId]);
+                if (! $i || $shared !== 'manifest') $records[] = $manifest;
+                $recordsManifest = $manifest;
+                $trip->waybills()->create(['dm_id' => $manifest->id, 'waybill_number' => $manifest->waybill_numbers[0], 'drops_number' => 1, 'quantity' => 1, 'kilogram' => 1, 'cbm' => 1, 'created_by' => $userId]);
                 $trip->personnels()->create(['employee_id' => $employee, 'designation' => 'Driver', 'created_by' => $userId]);
                 $trip->costs()->create(['cost_code' => $cost->id, 'released_amount' => 0, 'nonreleased_amount' => 0, 'created_by' => $userId]);
                 $trip->segments()->create(['origin_id' => $route->id, 'destination_id' => $route->id, 'origin' => 'Origin', 'destination' => 'Destination', 'total_distance' => 1, 'created_by' => $userId]);
             }
             // Both workers start while the shared resource is locked by this connection.
             DB::beginTransaction();
-            if ($shared === 'personnel') {
+            if ($shared === 'manifest') {
+                \App\Models\Delivery::whereKey($recordsManifest->id)->lockForUpdate()->firstOrFail();
+            } elseif ($shared === 'personnel') {
                 Personnel::whereKey($trips[0]->personnels()->first()->employee_id)->lockForUpdate()->firstOrFail();
             } else {
                 Vehicle::whereKey($trips[0]->vehicle_id)->lockForUpdate()->firstOrFail();
@@ -90,8 +97,8 @@ class TripAssignmentConcurrencyTest extends TestCase
                 $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().$process->getOutput());
                 $results[] = $process->getOutput();
             }
-            $this->assertCount(1, array_filter($results, fn ($result) => $result === 'dispatched'));
-            $this->assertCount(1, array_filter($results, fn ($result) => str_starts_with($result, 'rejected:') && str_contains($result, 'already assigned')));
+            $this->assertCount(1, array_filter($results, fn ($result) => $result === 'dispatched'), implode(' | ', $results));
+            $this->assertCount(1, array_filter($results, fn ($result) => str_starts_with($result, 'rejected:') && str_contains($result, $shared === 'manifest' ? 'pending DM' : 'already assigned')));
             $this->assertEquals(1, Trip::whereIn('id', array_map(fn ($trip) => $trip->id, $trips))->where('current_status', 'Dispatched')->count());
         } finally {
             if (DB::transactionLevel()) {
@@ -100,8 +107,13 @@ class TripAssignmentConcurrencyTest extends TestCase
             foreach ($processes as $process) {
                 if ($process->isRunning()) $process->stop();
             }
-            foreach ($trips as $trip) $trip->delete();
-            foreach (array_reverse($records) as $record) $record->delete();
+            foreach ($trips as $trip) { $trip->waybills()->delete(); $trip->delete(); }
+            foreach (array_reverse($records) as $record) {
+                if ($record instanceof \App\Models\Delivery) {
+                    DB::table('delivery_details')->where('dm', $record->id)->delete();
+                }
+                $record->delete();
+            }
             foreach ($readyFiles as $file) if (is_file($file)) unlink($file);
         }
     }

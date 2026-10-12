@@ -10,7 +10,7 @@ class SaveTripRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
-        foreach (['personnels', 'segments', 'fuel_purchases', 'costs'] as $collection) {
+        foreach (['personnels', 'segments', 'fuel_purchases', 'costs', 'waybills'] as $collection) {
             if (! $this->has($collection)) {
                 $this->merge([$collection => []]);
             }
@@ -61,6 +61,14 @@ class SaveTripRequest extends FormRequest
         $amount = 'required|numeric|min:0|max:999999.99|decimal:0,2';
 
         return [
+            'waybills' => 'required|array|min:1|max:2000',
+            'waybills.*.id' => 'nullable|integer|distinct',
+            'waybills.*.dm_id' => 'required|integer|min:1|max:2147483647',
+            'waybills.*.waybill_number' => 'required|string|max:255|distinct:strict',
+            'waybills.*.quantity' => 'required|integer|min:0|max:2147483647',
+            'waybills.*.kilogram' => 'required|integer|min:0|max:2147483647',
+            'waybills.*.cbm' => 'required|numeric|min:0|max:999999999',
+            'waybills.*.drops_number' => 'required|integer|min:0|max:2147483647',
             'version' => 'required|integer|min:0',
             'vehicle_id' => ['required', 'integer', Rule::exists('vehicles', 'id')],
             'tariff_id' => ['required', 'integer', $active('trip_rates')],
