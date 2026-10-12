@@ -8,7 +8,9 @@ class ReturnManifest extends Model
 {
     protected $table = 'returns';
 
-    protected $fillable = ['waybill_numbers', 'created_by'];
+    protected $fillable = ['waybill_numbers', 'created_by', 'status'];
+
+    protected $attributes = ['status' => 'pending'];
 
     protected $casts = ['waybill_numbers' => 'array'];
 }

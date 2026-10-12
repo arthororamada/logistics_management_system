@@ -70,29 +70,6 @@ class DeliveryController extends Controller
         return view('delivery.show', compact('delivery', 'details', 'packages', 'creator'));
     }
 
-    public function dispatch(Delivery $delivery): RedirectResponse
-    {
-        $dispatched = DB::transaction(function () use ($delivery) {
-            $manifest = Delivery::query()->lockForUpdate()->findOrFail($delivery->id);
-            if (DB::table('delivery_details')->where('dm', $manifest->id)->exists()) {
-                return false;
-            }
-
-            $this->validateWaybills($manifest->waybill_numbers, 'for_delivery_dispatch', true);
-            DB::table('delivery_details')->insert(array_map(fn ($number) => [
-                'dm' => $manifest->id,
-                'waybill_number' => $number,
-                'status' => 'dispatched',
-                'created_at' => now(),
-            ], $manifest->waybill_numbers));
-            app(PackageStatusUpdater::class)->update($manifest->waybill_numbers, 'delivery_dispatched', auth()->id());
-
-            return true;
-        });
-
-        return redirect()->route('delivery.show', $delivery)->with('success', $dispatched ? 'Document manifest dispatched.' : 'Document manifest has already been dispatched.');
-    }
-
     private function validateWaybills(array $numbers, string $requiredStatus = 'accepted_to_warehouse', bool $lock = false): void
     {
         $validator = Validator::make(['numbers' => $numbers], [

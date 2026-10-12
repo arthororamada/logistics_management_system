@@ -70,28 +70,6 @@ class TransferController extends Controller
         return view('transfer.show', compact('transfer', 'details', 'packages', 'creator'));
     }
 
-    public function dispatch(Transfer $transfer): RedirectResponse
-    {
-        $dispatched = DB::transaction(function () use ($transfer) {
-            $manifest = Transfer::query()->lockForUpdate()->findOrFail($transfer->id);
-            if (DB::table('transfer_details')->where('dm', $manifest->id)->exists()) {
-                return false;
-            }
-
-            $this->validateWaybills($manifest->waybill_numbers, 'for_transfer_dispatch', true);
-            DB::table('transfer_details')->insert(array_map(fn ($number) => [
-                'dm' => $manifest->id,
-                'waybill_number' => $number,
-                'status' => 'dispatched',
-                'created_at' => now(),
-            ], $manifest->waybill_numbers));
-
-            return true;
-        });
-
-        return redirect()->route('transfer.show', $transfer)->with('success', $dispatched ? 'Document manifest dispatched.' : 'Document manifest has already been dispatched.');
-    }
-
     private function validateWaybills(array $numbers, string $requiredStatus = 'accepted_to_warehouse', bool $lock = false): void
     {
         $validator = Validator::make(['numbers' => $numbers], [

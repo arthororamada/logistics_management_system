@@ -70,29 +70,6 @@ class PickupController extends Controller
         return view('pickup.show', compact('pickup', 'details', 'packages', 'creator'));
     }
 
-    public function dispatch(Pickup $pickup): RedirectResponse
-    {
-        $dispatched = DB::transaction(function () use ($pickup) {
-            $manifest = Pickup::query()->lockForUpdate()->findOrFail($pickup->id);
-            if (DB::table('pickup_details')->where('dm', $manifest->id)->exists()) {
-                return false;
-            }
-
-            $this->validateWaybills($manifest->waybill_numbers, 'for_pickup_dispatch');
-            DB::table('pickup_details')->insert(array_map(fn ($number) => [
-                'dm' => $manifest->id,
-                'waybill_number' => $number,
-                'status' => 'dispatched',
-                'created_at' => now(),
-            ], $manifest->waybill_numbers));
-            app(PackageStatusUpdater::class)->update($manifest->waybill_numbers, 'pickup_dispatched', auth()->id());
-
-            return true;
-        });
-
-        return redirect()->route('pickup.show', $pickup)->with('success', $dispatched ? 'Document manifest dispatched.' : 'Document manifest has already been dispatched.');
-    }
-
     private function validateWaybills(array $numbers, string $requiredStatus = 'for_pickup'): void
     {
         $validator = Validator::make(['numbers' => $numbers], [

@@ -31,6 +31,7 @@ class DeliveryManagementTest extends TestCase
         // Use the resulting manifest schema; SQLite cannot drop the historical foreign key.
         Schema::create('deliveries', function (Blueprint $table) {
             $table->id();
+            $table->enum('status', ['pending', 'dispatched', 'completed'])->default('pending');
             $table->json('waybill_numbers');
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
@@ -75,6 +76,7 @@ class DeliveryManagementTest extends TestCase
             ->assertSessionMissing('delivery.waybill_numbers');
         $this->assertSame(['001234', 'WB-002', 'WB-003', 'WB-004', 'WB-005'], $delivery->waybill_numbers);
         $this->assertSame($this->administrator()->id, $delivery->created_by);
+        $this->assertSame('pending', $delivery->status);
         $this->assertDatabaseCount('delivery_details', 0);
         $this->assertDatabaseCount('status_logs', 5);
         foreach ($delivery->waybill_numbers as $number) {
@@ -83,16 +85,7 @@ class DeliveryManagementTest extends TestCase
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
         $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
-        $this->get(route('delivery.show', $delivery))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:');
-        $this->post(route('delivery.dispatch', $delivery))->assertSessionHasNoErrors();
-        $this->assertDatabaseCount('delivery_details', 5);
-        foreach ($delivery->waybill_numbers as $number) {
-            $this->assertStatusLogged($number, 'delivery_dispatched', $this->administrator()->id);
-        }
-        $this->assertDatabaseCount('status_logs', 10);
-        $this->post(route('delivery.dispatch', $delivery))->assertSessionHasNoErrors();
-        $this->assertDatabaseCount('status_logs', 10);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => null, 'package_status' => 'delivery_dispatched']);
+        $this->get(route('delivery.show', $delivery))->assertOk()->assertDontSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:');
     }
 
     public function test_unknown_and_deleted_waybills_reject_the_batch_and_preserve_the_draft(): void
@@ -149,7 +142,7 @@ class DeliveryManagementTest extends TestCase
             ->assertSessionHas('delivery.waybill_numbers', $numbers);
     }
 
-    public function test_dispatched_waybills_are_rechecked_before_creation_and_dispatch(): void
+    public function test_dispatched_waybills_are_rechecked_before_creation(): void
     {
         $this->package('WB-001');
         $dispatched = $this->manifest(['WB-001']);
@@ -157,11 +150,6 @@ class DeliveryManagementTest extends TestCase
         $this->actingAs($this->administrator())->withSession(['delivery.waybill_numbers' => ['WB-001']])
             ->from(route('delivery.index'))->post(route('delivery.store'))->assertSessionHasErrors('waybill_numbers')->assertSessionHas('delivery.waybill_numbers', ['WB-001']);
         $this->assertDatabaseCount('deliveries', 1);
-        $pending = $this->manifest(['WB-001']);
-        $this->from(route('delivery.show', $pending))->post(route('delivery.dispatch', $pending))
-            ->assertRedirect(route('delivery.show', $pending))->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('delivery_details', 1);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-001', 'package_status' => 'accepted_to_warehouse']);
     }
 
     public function test_waybills_can_be_removed_from_the_draft(): void
@@ -181,59 +169,44 @@ class DeliveryManagementTest extends TestCase
         $this->assertDatabaseCount('deliveries', 0);
     }
 
-    public function test_dispatch_creates_one_detail_per_waybill_and_repeated_dispatch_is_safe(): void
-    {
-        $this->package('001234');
-        $this->package('WB-002');
-        $this->package('UNRELATED');
-        $this->package('001234', true);
-        $delivery = $this->manifest(['001234', 'WB-002']);
-        DB::table('packages')->whereIn('waybill_number', $delivery->waybill_numbers)->whereNull('is_deleted')
-            ->update(['package_status' => 'for_delivery_dispatch']);
-        for ($attempt = 0; $attempt < 2; $attempt++) {
-            $this->actingAs($this->administrator())->post(route('delivery.dispatch', $delivery))
-                ->assertRedirect(route('delivery.show', $delivery))->assertSessionHasNoErrors();
-        }
-        $this->assertDatabaseCount('delivery_details', 2);
-        foreach ($delivery->waybill_numbers as $number) {
-            $this->assertDatabaseHas('delivery_details', ['dm' => $delivery->id, 'waybill_number' => $number, 'status' => 'dispatched']);
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'delivery_dispatched']);
-        }
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
-        $this->assertNotNull(DB::table('delivery_details')->first()->created_at);
-        $this->get(route('delivery.show', $delivery))->assertOk()->assertSee('dispatched')->assertDontSee('Dispatch Document Manifest');
-    }
-
-    public function test_dispatch_rejects_invalid_packages_without_creating_any_details(): void
-    {
-        $this->package('VALID');
-        $this->package('DELETED', true);
-        $delivery = $this->manifest(['VALID', 'DELETED']);
-        DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_delivery_dispatch']);
-        $this->actingAs($this->administrator())->from(route('delivery.show', $delivery))
-            ->post(route('delivery.dispatch', $delivery))->assertRedirect(route('delivery.show', $delivery))
-            ->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('delivery_details', 0);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_delivery_dispatch']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'DELETED', 'package_status' => 'accepted_to_warehouse']);
-    }
-
     public function test_delivery_requires_authentication_and_permissions(): void
     {
         $delivery = $this->manifest(['WB-001']);
         $this->get(route('delivery.index'))->assertRedirect(route('login'));
         $this->get(route('delivery.show', $delivery))->assertRedirect(route('login'));
-        foreach (['delivery.waybills.add', 'delivery.store', 'delivery.dispatch'] as $route) {
-            $this->post(route($route, $route === 'delivery.dispatch' ? $delivery : []))->assertRedirect(route('login'));
+        foreach (['delivery.waybills.add', 'delivery.store'] as $route) {
+            $this->post(route($route))->assertRedirect(route('login'));
         }
         $user = User::create(['name' => 'Delivery Test', 'username' => 'delivery-test', 'password' => 'test-password']);
         $this->actingAs($user)->get(route('delivery.index'))->assertForbidden();
         $this->get(route('delivery.show', $delivery))->assertForbidden();
-        foreach (['delivery.waybills.add', 'delivery.store', 'delivery.dispatch'] as $route) {
-            $this->post(route($route, $route === 'delivery.dispatch' ? $delivery : []))->assertForbidden();
+        foreach (['delivery.waybills.add', 'delivery.store'] as $route) {
+            $this->post(route($route))->assertForbidden();
         }
         $this->delete(route('delivery.waybills.remove'))->assertForbidden();
+    }
+
+    public function test_document_manifest_dispatch_is_removed(): void
+    {
+        $this->package('VALID');
+        $manifest = $this->manifest(['VALID']);
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('delivery.dispatch'));
+        $this->actingAs($this->administrator())->get(route('delivery.show', $manifest))
+            ->assertOk()->assertDontSee('Dispatch Document Manifest');
+        $this->post('/document-manifests/delivery/'.$manifest->id.'/dispatch')->assertNotFound();
+        $this->assertDatabaseCount('delivery_details', 0);
+        $this->assertDatabaseCount('status_logs', 0);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'accepted_to_warehouse']);
+    }
+
+    public function test_existing_manifest_details_remain_readable(): void
+    {
+        $this->package('HISTORICAL');
+        $manifest = $this->manifest(['HISTORICAL']);
+        DB::table('delivery_details')->insert(['dm' => $manifest->id, 'waybill_number' => 'HISTORICAL', 'status' => 'dispatched']);
+        $this->actingAs($this->administrator())->get(route('delivery.show', $manifest))
+            ->assertOk()->assertSee('HISTORICAL')->assertSee('Dispatched')->assertDontSee('Dispatch Document Manifest');
+        $this->assertDatabaseCount('delivery_details', 1);
     }
 
     private function package(string $number, bool $deleted = false): void
@@ -255,19 +228,7 @@ class DeliveryManagementTest extends TestCase
         return User::where('username', 'admin')->firstOrFail();
     }
 
-    public function test_dispatch_rechecks_package_status_without_creating_partial_details(): void
-    {
-        $this->package('VALID');
-        $this->package('CHANGED');
-        DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_delivery_dispatch']);
-        $manifest = $this->manifest(['VALID', 'CHANGED']);
-        $this->actingAs($this->administrator())->post(route('delivery.dispatch', $manifest))
-            ->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('delivery_details', 0);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_delivery_dispatch']);
-    }
-
-    public function test_view_only_users_cannot_create_or_dispatch(): void
+    public function test_view_only_users_cannot_create(): void
     {
         $this->package('VALID');
         DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_delivery_dispatch']);
@@ -279,7 +240,6 @@ class DeliveryManagementTest extends TestCase
         $this->actingAs($user)->get(route('delivery.index'))->assertOk()->assertDontSee('Add Waybill Number/s');
         $this->get(route('delivery.show', $manifest))->assertOk()->assertDontSee('Dispatch Document Manifest');
         $this->post(route('delivery.store'))->assertForbidden();
-        $this->post(route('delivery.dispatch', $manifest))->assertForbidden();
     }
 
     public function test_delivery_drafts_preserve_pickup_and_transfer_drafts(): void

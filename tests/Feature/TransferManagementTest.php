@@ -31,6 +31,7 @@ class TransferManagementTest extends TestCase
         // Use the resulting manifest schema; SQLite cannot drop the historical foreign key.
         Schema::create('transfers', function (Blueprint $table) {
             $table->id();
+            $table->enum('status', ['pending', 'dispatched', 'completed'])->default('pending');
             $table->json('waybill_numbers');
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
@@ -76,6 +77,7 @@ class TransferManagementTest extends TestCase
             ->assertSessionMissing('transfer.waybill_numbers');
         $this->assertSame(['001234', 'WB-002', 'WB-003', 'WB-004', 'WB-005'], $transfer->waybill_numbers);
         $this->assertSame($this->administrator()->id, $transfer->created_by);
+        $this->assertSame('pending', $transfer->status);
         $this->assertDatabaseCount('transfer_details', 0);
         foreach ($transfer->waybill_numbers as $number) {
             $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_transfer_dispatch']);
@@ -87,7 +89,7 @@ class TransferManagementTest extends TestCase
         $this->assertDatabaseCount('status_logs', 5);
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
         $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
-        $this->get(route('transfer.show', $transfer))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:')->assertDontSee('Destination warehouse:');
+        $this->get(route('transfer.show', $transfer))->assertOk()->assertDontSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:')->assertDontSee('Destination warehouse:');
     }
 
     public function test_unknown_and_deleted_waybills_reject_the_batch_and_preserve_the_draft(): void
@@ -144,7 +146,7 @@ class TransferManagementTest extends TestCase
             ->assertSessionHas('transfer.waybill_numbers', $numbers);
     }
 
-    public function test_dispatched_waybills_are_rechecked_before_creation_and_dispatch(): void
+    public function test_dispatched_waybills_are_rechecked_before_creation(): void
     {
         $this->package('WB-001');
         $dispatched = $this->manifest(['WB-001']);
@@ -152,12 +154,6 @@ class TransferManagementTest extends TestCase
         $this->actingAs($this->administrator())->withSession(['transfer.waybill_numbers' => ['WB-001']])
             ->from(route('transfer.index'))->post(route('transfer.store'))->assertSessionHasErrors('waybill_numbers')->assertSessionHas('transfer.waybill_numbers', ['WB-001']);
         $this->assertDatabaseCount('transfers', 1);
-        $pending = $this->manifest(['WB-001']);
-        DB::table('packages')->where('waybill_number', 'WB-001')->update(['package_status' => 'for_transfer_dispatch']);
-        $this->from(route('transfer.show', $pending))->post(route('transfer.dispatch', $pending))
-            ->assertRedirect(route('transfer.show', $pending))->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('transfer_details', 1);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-001', 'package_status' => 'for_transfer_dispatch']);
     }
 
     public function test_waybills_can_be_removed_from_the_draft(): void
@@ -177,60 +173,44 @@ class TransferManagementTest extends TestCase
         $this->assertDatabaseCount('transfers', 0);
     }
 
-    public function test_dispatch_creates_one_detail_per_waybill_and_repeated_dispatch_is_safe(): void
-    {
-        $this->package('001234');
-        $this->package('WB-002');
-        $this->package('UNRELATED');
-        $this->package('001234', true);
-        $this->actingAs($this->administrator())->withSession(['transfer.waybill_numbers' => ['001234', 'WB-002']])
-            ->post(route('transfer.store'))
-            ->assertSessionHasNoErrors();
-        $transfer = Transfer::firstOrFail();
-        for ($attempt = 0; $attempt < 2; $attempt++) {
-            $this->actingAs($this->administrator())->post(route('transfer.dispatch', $transfer))
-                ->assertRedirect(route('transfer.show', $transfer))->assertSessionHasNoErrors();
-        }
-        $this->assertDatabaseCount('transfer_details', 2);
-        foreach ($transfer->waybill_numbers as $number) {
-            $this->assertDatabaseHas('transfer_details', ['dm' => $transfer->id, 'waybill_number' => $number, 'status' => 'dispatched']);
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_transfer_dispatch']);
-        }
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
-        $this->assertNotNull(DB::table('transfer_details')->first()->created_at);
-        $this->get(route('transfer.show', $transfer))->assertOk()->assertSee('dispatched')->assertDontSee('Dispatch Document Manifest');
-    }
-
-    public function test_dispatch_rejects_invalid_packages_without_creating_any_details(): void
-    {
-        $this->package('VALID');
-        $this->package('DELETED', true);
-        $transfer = $this->manifest(['VALID', 'DELETED']);
-        DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_transfer_dispatch']);
-        $this->actingAs($this->administrator())->from(route('transfer.show', $transfer))
-            ->post(route('transfer.dispatch', $transfer))->assertRedirect(route('transfer.show', $transfer))
-            ->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('transfer_details', 0);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_transfer_dispatch']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'DELETED', 'package_status' => 'accepted_to_warehouse']);
-    }
-
     public function test_transfer_requires_authentication_and_permissions(): void
     {
         $transfer = $this->manifest(['WB-001']);
         $this->get(route('transfer.index'))->assertRedirect(route('login'));
         $this->get(route('transfer.show', $transfer))->assertRedirect(route('login'));
-        foreach (['transfer.waybills.add', 'transfer.store', 'transfer.dispatch'] as $route) {
-            $this->post(route($route, $route === 'transfer.dispatch' ? $transfer : []))->assertRedirect(route('login'));
+        foreach (['transfer.waybills.add', 'transfer.store'] as $route) {
+            $this->post(route($route))->assertRedirect(route('login'));
         }
         $user = User::create(['name' => 'Transfer Test', 'username' => 'transfer-test', 'password' => 'test-password']);
         $this->actingAs($user)->get(route('transfer.index'))->assertForbidden();
         $this->get(route('transfer.show', $transfer))->assertForbidden();
-        foreach (['transfer.waybills.add', 'transfer.store', 'transfer.dispatch'] as $route) {
-            $this->post(route($route, $route === 'transfer.dispatch' ? $transfer : []))->assertForbidden();
+        foreach (['transfer.waybills.add', 'transfer.store'] as $route) {
+            $this->post(route($route))->assertForbidden();
         }
         $this->delete(route('transfer.waybills.remove'))->assertForbidden();
+    }
+
+    public function test_document_manifest_dispatch_is_removed(): void
+    {
+        $this->package('VALID');
+        $manifest = $this->manifest(['VALID']);
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('transfer.dispatch'));
+        $this->actingAs($this->administrator())->get(route('transfer.show', $manifest))
+            ->assertOk()->assertDontSee('Dispatch Document Manifest');
+        $this->post('/document-manifests/transfer/'.$manifest->id.'/dispatch')->assertNotFound();
+        $this->assertDatabaseCount('transfer_details', 0);
+        $this->assertDatabaseCount('status_logs', 0);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'accepted_to_warehouse']);
+    }
+
+    public function test_existing_manifest_details_remain_readable(): void
+    {
+        $this->package('HISTORICAL');
+        $manifest = $this->manifest(['HISTORICAL']);
+        DB::table('transfer_details')->insert(['dm' => $manifest->id, 'waybill_number' => 'HISTORICAL', 'status' => 'dispatched']);
+        $this->actingAs($this->administrator())->get(route('transfer.show', $manifest))
+            ->assertOk()->assertSee('HISTORICAL')->assertSee('Dispatched')->assertDontSee('Dispatch Document Manifest');
+        $this->assertDatabaseCount('transfer_details', 1);
     }
 
     private function package(string $number, bool $deleted = false): void
@@ -269,7 +249,7 @@ class TransferManagementTest extends TestCase
         $this->post(route('transfer.waybills.add'), ['waybill_numbers' => 'VALID'])->assertSessionHasNoErrors();
     }
 
-    public function test_package_status_is_rechecked_before_creation_and_dispatch(): void
+    public function test_package_status_is_rechecked_before_creation(): void
     {
         $this->package('CHANGED');
         $this->actingAs($this->administrator())->post(route('transfer.waybills.add'), ['waybill_numbers' => 'CHANGED'])
@@ -278,11 +258,5 @@ class TransferManagementTest extends TestCase
         $this->post(route('transfer.store'))
             ->assertSessionHasErrors('waybill_numbers')->assertSessionHas('transfer.waybill_numbers', ['CHANGED']);
         $this->assertDatabaseCount('transfers', 0);
-        $this->package('VALID');
-        $manifest = $this->manifest(['VALID', 'CHANGED']);
-        DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_transfer_dispatch']);
-        $this->post(route('transfer.dispatch', $manifest))->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('transfer_details', 0);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_transfer_dispatch']);
     }
 }

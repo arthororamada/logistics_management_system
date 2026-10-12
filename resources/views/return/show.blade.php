@@ -3,7 +3,7 @@
 @php($breadcrumbs = [['label' => 'Home', 'url' => route('dashboard')], ['label' => 'Document Manifests'], ['label' => 'Return', 'url' => route('return.index')], ['label' => '#'.$returnManifest->id]])
 @section('content')
     <section class="page-heading">
-        <div><p class="eyebrow">Document Manifests</p><h2>Return Document Manifest #{{ $returnManifest->id }}</h2><p>Review the manifest and dispatch its waybill numbers.</p></div>
+        <div><p class="eyebrow">Document Manifests</p><h2>Return Document Manifest #{{ $returnManifest->id }}</h2><p>Review the manifest and its waybill numbers.</p></div>
         <x-button :href="route('return.index')" variant="secondary">Back to Returns</x-button>
     </section>
 
@@ -17,12 +17,6 @@
         <p><strong>Created:</strong> {{ $returnManifest->created_at?->format('M d, Y H:i') }}</p>
         <p><strong>Total waybill numbers:</strong> {{ count($returnManifest->waybill_numbers) }}</p>
         <p><strong>Dispatch:</strong> {{ $details->isEmpty() ? 'Awaiting dispatch' : 'Dispatched' }}</p>
-        @if($details->isEmpty() && auth()->user()->hasPermission('return.create'))
-            <form method="POST" action="{{ route('return.dispatch', $returnManifest) }}" class="form-actions">
-                @csrf
-                <x-button type="submit" variant="primary">Dispatch Document Manifest</x-button>
-            </form>
-        @endif
     </x-card>
 
     <x-card title="Waybill Numbers and Packages">

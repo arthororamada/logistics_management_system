@@ -31,6 +31,7 @@ class ReturnManagementTest extends TestCase
         // Use the resulting manifest schema; SQLite cannot drop the historical foreign key.
         Schema::create('returns', function (Blueprint $table) {
             $table->id();
+            $table->enum('status', ['pending', 'dispatched', 'completed'])->default('pending');
             $table->json('waybill_numbers');
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
@@ -75,6 +76,7 @@ class ReturnManagementTest extends TestCase
             ->assertSessionMissing('return.waybill_numbers');
         $this->assertSame(['001234', 'WB-002', 'WB-003', 'WB-004', 'WB-005'], $returnManifest->waybill_numbers);
         $this->assertSame($this->administrator()->id, $returnManifest->created_by);
+        $this->assertSame('pending', $returnManifest->status);
         $this->assertDatabaseCount('return_details', 0);
         $this->assertDatabaseCount('status_logs', 5);
         foreach ($returnManifest->waybill_numbers as $number) {
@@ -83,16 +85,7 @@ class ReturnManagementTest extends TestCase
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'for_return']);
         $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'for_return']);
-        $this->get(route('return.show', $returnManifest))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:');
-        $this->post(route('return.dispatch', $returnManifest))->assertSessionHasNoErrors();
-        $this->assertDatabaseCount('return_details', 5);
-        foreach ($returnManifest->waybill_numbers as $number) {
-            $this->assertStatusLogged($number, 'return_dispatched', $this->administrator()->id);
-        }
-        $this->assertDatabaseCount('status_logs', 10);
-        $this->post(route('return.dispatch', $returnManifest))->assertSessionHasNoErrors();
-        $this->assertDatabaseCount('status_logs', 10);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => null, 'package_status' => 'return_dispatched']);
+        $this->get(route('return.show', $returnManifest))->assertOk()->assertDontSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:');
     }
 
     public function test_unknown_and_deleted_waybills_reject_the_batch_and_preserve_the_draft(): void
@@ -149,7 +142,7 @@ class ReturnManagementTest extends TestCase
             ->assertSessionHas('return.waybill_numbers', $numbers);
     }
 
-    public function test_dispatched_waybills_are_rechecked_before_creation_and_dispatch(): void
+    public function test_dispatched_waybills_are_rechecked_before_creation(): void
     {
         $this->package('WB-001');
         $dispatched = $this->manifest(['WB-001']);
@@ -157,11 +150,6 @@ class ReturnManagementTest extends TestCase
         $this->actingAs($this->administrator())->withSession(['return.waybill_numbers' => ['WB-001']])
             ->from(route('return.index'))->post(route('return.store'))->assertSessionHasErrors('waybill_numbers')->assertSessionHas('return.waybill_numbers', ['WB-001']);
         $this->assertDatabaseCount('returns', 1);
-        $pending = $this->manifest(['WB-001']);
-        $this->from(route('return.show', $pending))->post(route('return.dispatch', $pending))
-            ->assertRedirect(route('return.show', $pending))->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('return_details', 1);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-001', 'package_status' => 'for_return']);
     }
 
     public function test_waybills_can_be_removed_from_the_draft(): void
@@ -181,59 +169,44 @@ class ReturnManagementTest extends TestCase
         $this->assertDatabaseCount('returns', 0);
     }
 
-    public function test_dispatch_creates_one_detail_per_waybill_and_repeated_dispatch_is_safe(): void
-    {
-        $this->package('001234');
-        $this->package('WB-002');
-        $this->package('UNRELATED');
-        $this->package('001234', true);
-        $returnManifest = $this->manifest(['001234', 'WB-002']);
-        DB::table('packages')->whereIn('waybill_number', $returnManifest->waybill_numbers)->whereNull('is_deleted')
-            ->update(['package_status' => 'for_return_dispatch']);
-        for ($attempt = 0; $attempt < 2; $attempt++) {
-            $this->actingAs($this->administrator())->post(route('return.dispatch', $returnManifest))
-                ->assertRedirect(route('return.show', $returnManifest))->assertSessionHasNoErrors();
-        }
-        $this->assertDatabaseCount('return_details', 2);
-        foreach ($returnManifest->waybill_numbers as $number) {
-            $this->assertDatabaseHas('return_details', ['dm' => $returnManifest->id, 'waybill_number' => $number, 'status' => 'dispatched']);
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'return_dispatched']);
-        }
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'for_return']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'for_return']);
-        $this->assertNotNull(DB::table('return_details')->first()->created_at);
-        $this->get(route('return.show', $returnManifest))->assertOk()->assertSee('dispatched')->assertDontSee('Dispatch Document Manifest');
-    }
-
-    public function test_dispatch_rejects_invalid_packages_without_creating_any_details(): void
-    {
-        $this->package('VALID');
-        $this->package('DELETED', true);
-        $returnManifest = $this->manifest(['VALID', 'DELETED']);
-        DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_return_dispatch']);
-        $this->actingAs($this->administrator())->from(route('return.show', $returnManifest))
-            ->post(route('return.dispatch', $returnManifest))->assertRedirect(route('return.show', $returnManifest))
-            ->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('return_details', 0);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_return_dispatch']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'DELETED', 'package_status' => 'for_return']);
-    }
-
     public function test_return_requires_authentication_and_permissions(): void
     {
         $returnManifest = $this->manifest(['WB-001']);
         $this->get(route('return.index'))->assertRedirect(route('login'));
         $this->get(route('return.show', $returnManifest))->assertRedirect(route('login'));
-        foreach (['return.waybills.add', 'return.store', 'return.dispatch'] as $route) {
-            $this->post(route($route, $route === 'return.dispatch' ? $returnManifest : []))->assertRedirect(route('login'));
+        foreach (['return.waybills.add', 'return.store'] as $route) {
+            $this->post(route($route))->assertRedirect(route('login'));
         }
         $user = User::create(['name' => 'ReturnManifest Test', 'username' => 'return-test', 'password' => 'test-password']);
         $this->actingAs($user)->get(route('return.index'))->assertForbidden();
         $this->get(route('return.show', $returnManifest))->assertForbidden();
-        foreach (['return.waybills.add', 'return.store', 'return.dispatch'] as $route) {
-            $this->post(route($route, $route === 'return.dispatch' ? $returnManifest : []))->assertForbidden();
+        foreach (['return.waybills.add', 'return.store'] as $route) {
+            $this->post(route($route))->assertForbidden();
         }
         $this->delete(route('return.waybills.remove'))->assertForbidden();
+    }
+
+    public function test_document_manifest_dispatch_is_removed(): void
+    {
+        $this->package('VALID');
+        $manifest = $this->manifest(['VALID']);
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('return.dispatch'));
+        $this->actingAs($this->administrator())->get(route('return.show', $manifest))
+            ->assertOk()->assertDontSee('Dispatch Document Manifest');
+        $this->post('/document-manifests/return/'.$manifest->id.'/dispatch')->assertNotFound();
+        $this->assertDatabaseCount('return_details', 0);
+        $this->assertDatabaseCount('status_logs', 0);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_return']);
+    }
+
+    public function test_existing_manifest_details_remain_readable(): void
+    {
+        $this->package('HISTORICAL');
+        $manifest = $this->manifest(['HISTORICAL']);
+        DB::table('return_details')->insert(['dm' => $manifest->id, 'waybill_number' => 'HISTORICAL', 'status' => 'dispatched']);
+        $this->actingAs($this->administrator())->get(route('return.show', $manifest))
+            ->assertOk()->assertSee('HISTORICAL')->assertSee('Dispatched')->assertDontSee('Dispatch Document Manifest');
+        $this->assertDatabaseCount('return_details', 1);
     }
 
     private function package(string $number, bool $deleted = false): void
@@ -255,19 +228,7 @@ class ReturnManagementTest extends TestCase
         return User::where('username', 'admin')->firstOrFail();
     }
 
-    public function test_dispatch_rechecks_package_status_without_creating_partial_details(): void
-    {
-        $this->package('VALID');
-        $this->package('CHANGED');
-        DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_return_dispatch']);
-        $manifest = $this->manifest(['VALID', 'CHANGED']);
-        $this->actingAs($this->administrator())->post(route('return.dispatch', $manifest))
-            ->assertSessionHasErrors('waybill_numbers');
-        $this->assertDatabaseCount('return_details', 0);
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'VALID', 'package_status' => 'for_return_dispatch']);
-    }
-
-    public function test_view_only_users_cannot_create_or_dispatch(): void
+    public function test_view_only_users_cannot_create(): void
     {
         $this->package('VALID');
         DB::table('packages')->where('waybill_number', 'VALID')->update(['package_status' => 'for_return_dispatch']);
@@ -279,7 +240,6 @@ class ReturnManagementTest extends TestCase
         $this->actingAs($user)->get(route('return.index'))->assertOk()->assertDontSee('Add Waybill Number/s');
         $this->get(route('return.show', $manifest))->assertOk()->assertDontSee('Dispatch Document Manifest');
         $this->post(route('return.store'))->assertForbidden();
-        $this->post(route('return.dispatch', $manifest))->assertForbidden();
     }
 
     public function test_return_drafts_preserve_pickup_and_transfer_drafts(): void

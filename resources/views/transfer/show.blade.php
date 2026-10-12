@@ -3,7 +3,7 @@
 @php($breadcrumbs = [['label' => 'Home', 'url' => route('dashboard')], ['label' => 'Document Manifests'], ['label' => 'Transfer', 'url' => route('transfer.index')], ['label' => '#'.$transfer->id]])
 @section('content')
     <section class="page-heading">
-        <div><p class="eyebrow">Document Manifests</p><h2>Transfer Document Manifest #{{ $transfer->id }}</h2><p>Review the manifest and dispatch its waybill numbers.</p></div>
+        <div><p class="eyebrow">Document Manifests</p><h2>Transfer Document Manifest #{{ $transfer->id }}</h2><p>Review the manifest and its waybill numbers.</p></div>
         <x-button :href="route('transfer.index')" variant="secondary">Back to Transfers</x-button>
     </section>
 
@@ -17,12 +17,6 @@
         <p><strong>Created:</strong> {{ $transfer->created_at?->format('M d, Y H:i') }}</p>
         <p><strong>Total waybill numbers:</strong> {{ count($transfer->waybill_numbers) }}</p>
         <p><strong>Dispatch:</strong> {{ $details->isEmpty() ? 'Awaiting dispatch' : 'Dispatched' }}</p>
-        @if($details->isEmpty() && auth()->user()->hasPermission('transfer.create'))
-            <form method="POST" action="{{ route('transfer.dispatch', $transfer) }}" class="form-actions">
-                @csrf
-                <x-button type="submit" variant="primary">Dispatch Document Manifest</x-button>
-            </form>
-        @endif
     </x-card>
 
     <x-card title="Waybill Numbers and Packages">

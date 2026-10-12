@@ -70,29 +70,6 @@ class ReturnController extends Controller
         return view('return.show', compact('returnManifest', 'details', 'packages', 'creator'));
     }
 
-    public function dispatch(ReturnManifest $returnManifest): RedirectResponse
-    {
-        $dispatched = DB::transaction(function () use ($returnManifest) {
-            $manifest = ReturnManifest::query()->lockForUpdate()->findOrFail($returnManifest->id);
-            if (DB::table('return_details')->where('dm', $manifest->id)->exists()) {
-                return false;
-            }
-
-            $this->validateWaybills($manifest->waybill_numbers, 'for_return_dispatch', true);
-            DB::table('return_details')->insert(array_map(fn ($number) => [
-                'dm' => $manifest->id,
-                'waybill_number' => $number,
-                'status' => 'dispatched',
-                'created_at' => now(),
-            ], $manifest->waybill_numbers));
-            app(PackageStatusUpdater::class)->update($manifest->waybill_numbers, 'return_dispatched', auth()->id());
-
-            return true;
-        });
-
-        return redirect()->route('return.show', $returnManifest)->with('success', $dispatched ? 'Document manifest dispatched.' : 'Document manifest has already been dispatched.');
-    }
-
     private function validateWaybills(array $numbers, string $requiredStatus = 'for_return', bool $lock = false): void
     {
         $validator = Validator::make(['numbers' => $numbers], [

@@ -6,7 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class Transfer extends Model
 {
-    protected $fillable = ['waybill_numbers', 'created_by'];
+    protected $fillable = ['waybill_numbers', 'created_by', 'status'];
+
+    protected $attributes = ['status' => 'pending'];
 
     protected $casts = ['waybill_numbers' => 'array'];
 }

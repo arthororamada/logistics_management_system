@@ -3,7 +3,7 @@
 @php($breadcrumbs = [['label' => 'Home', 'url' => route('dashboard')], ['label' => 'Document Manifests'], ['label' => 'Delivery', 'url' => route('delivery.index')], ['label' => '#'.$delivery->id]])
 @section('content')
     <section class="page-heading">
-        <div><p class="eyebrow">Document Manifests</p><h2>Delivery Document Manifest #{{ $delivery->id }}</h2><p>Review the manifest and dispatch its waybill numbers.</p></div>
+        <div><p class="eyebrow">Document Manifests</p><h2>Delivery Document Manifest #{{ $delivery->id }}</h2><p>Review the manifest and its waybill numbers.</p></div>
         <x-button :href="route('delivery.index')" variant="secondary">Back to Deliveries</x-button>
     </section>
 
@@ -17,12 +17,6 @@
         <p><strong>Created:</strong> {{ $delivery->created_at?->format('M d, Y H:i') }}</p>
         <p><strong>Total waybill numbers:</strong> {{ count($delivery->waybill_numbers) }}</p>
         <p><strong>Dispatch:</strong> {{ $details->isEmpty() ? 'Awaiting dispatch' : 'Dispatched' }}</p>
-        @if($details->isEmpty() && auth()->user()->hasPermission('delivery.create'))
-            <form method="POST" action="{{ route('delivery.dispatch', $delivery) }}" class="form-actions">
-                @csrf
-                <x-button type="submit" variant="primary">Dispatch Document Manifest</x-button>
-            </form>
-        @endif
     </x-card>
 
     <x-card title="Waybill Numbers and Packages">
