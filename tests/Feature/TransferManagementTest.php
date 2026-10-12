@@ -7,10 +7,13 @@ use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\InteractsWithStatusLogs;
 use Tests\TestCase;
 
 class TransferManagementTest extends TestCase
 {
+    use InteractsWithStatusLogs;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -42,6 +45,7 @@ class TransferManagementTest extends TestCase
             $table->string('buyer_full_address', 100);
             $table->timestamp('is_deleted')->nullable();
         });
+        $this->createStatusLogsTable();
     }
 
     public function test_administrator_can_open_transfer_from_document_manifests(): void
@@ -77,6 +81,10 @@ class TransferManagementTest extends TestCase
             $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_transfer_dispatch']);
         }
         $this->assertSame(6, DB::table('packages')->where('package_status', 'for_transfer_dispatch')->count());
+        foreach ($transfer->waybill_numbers as $number) {
+            $this->assertStatusLogged($number, 'for_transfer_dispatch', $this->administrator()->id);
+        }
+        $this->assertDatabaseCount('status_logs', 5);
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
         $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
         $this->get(route('transfer.show', $transfer))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:')->assertDontSee('Destination warehouse:');

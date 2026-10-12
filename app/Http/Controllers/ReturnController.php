@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ReturnManifest;
+use App\Services\PackageStatusUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,8 +52,7 @@ class ReturnController extends Controller
                 'waybill_numbers' => $numbers,
                 'created_by' => $request->user()->id,
             ]);
-            DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
-                ->update(['package_status' => 'for_return_dispatch']);
+            app(PackageStatusUpdater::class)->update($numbers, 'for_return_dispatch', $request->user()->id);
 
             return $returnManifest;
         });
@@ -85,8 +85,7 @@ class ReturnController extends Controller
                 'status' => 'dispatched',
                 'created_at' => now(),
             ], $manifest->waybill_numbers));
-            DB::table('packages')->whereIn('waybill_number', $manifest->waybill_numbers)->whereNull('is_deleted')
-                ->update(['package_status' => 'return_dispatched']);
+            app(PackageStatusUpdater::class)->update($manifest->waybill_numbers, 'return_dispatched', auth()->id());
 
             return true;
         });

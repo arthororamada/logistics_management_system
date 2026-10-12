@@ -7,10 +7,13 @@ use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\InteractsWithStatusLogs;
 use Tests\TestCase;
 
 class DeliveryManagementTest extends TestCase
 {
+    use InteractsWithStatusLogs;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -42,6 +45,7 @@ class DeliveryManagementTest extends TestCase
             $table->string('buyer_full_address', 100);
             $table->timestamp('is_deleted')->nullable();
         });
+        $this->createStatusLogsTable();
     }
 
     public function test_administrator_can_open_delivery_from_document_manifests(): void
@@ -72,7 +76,9 @@ class DeliveryManagementTest extends TestCase
         $this->assertSame(['001234', 'WB-002', 'WB-003', 'WB-004', 'WB-005'], $delivery->waybill_numbers);
         $this->assertSame($this->administrator()->id, $delivery->created_by);
         $this->assertDatabaseCount('delivery_details', 0);
+        $this->assertDatabaseCount('status_logs', 5);
         foreach ($delivery->waybill_numbers as $number) {
+            $this->assertStatusLogged($number, 'for_delivery_dispatch', $this->administrator()->id);
             $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_delivery_dispatch']);
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
@@ -80,6 +86,12 @@ class DeliveryManagementTest extends TestCase
         $this->get(route('delivery.show', $delivery))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:');
         $this->post(route('delivery.dispatch', $delivery))->assertSessionHasNoErrors();
         $this->assertDatabaseCount('delivery_details', 5);
+        foreach ($delivery->waybill_numbers as $number) {
+            $this->assertStatusLogged($number, 'delivery_dispatched', $this->administrator()->id);
+        }
+        $this->assertDatabaseCount('status_logs', 10);
+        $this->post(route('delivery.dispatch', $delivery))->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('status_logs', 10);
         $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => null, 'package_status' => 'delivery_dispatched']);
     }
 

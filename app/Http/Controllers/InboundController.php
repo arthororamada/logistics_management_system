@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\PackageStatusUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -41,11 +42,10 @@ class InboundController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $numbers = $request->session()->get('inbound.waybill_numbers', []);
-        DB::transaction(function () use ($numbers) {
+        DB::transaction(function () use ($numbers, $request) {
             $this->validateWaybills($numbers, true);
 
-            DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
-                ->update(['package_status' => 'accepted_to_warehouse']);
+            app(PackageStatusUpdater::class)->update($numbers, 'accepted_to_warehouse', $request->user()->id);
         });
         $request->session()->forget('inbound.waybill_numbers');
 

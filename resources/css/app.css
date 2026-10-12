@@ -198,3 +198,20 @@ button, input { font: inherit; } button, a { -webkit-tap-highlight-color: transp
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; } }
 
 .vehicle-upload-bar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:0; }.vehicle-upload-bar label { color:var(--primary-blue); font-size:12px; font-weight:650; }.vehicle-upload-bar input[type=file] { flex:1 1 280px; min-height:39px; padding:9px; border:1px solid #d6dbe2; border-radius:5px; color:#515d6d; background:#fff; font-size:11px; }.form-hint { margin:12px 0 0; color:var(--muted); font-size:11px; }
+.analytics-bars { min-height: 0; justify-content: flex-start; }
+.analytics-bars .grade-row { grid-template-columns: minmax(90px, 1fr) minmax(80px, 2fr) 50px; font-size: 12px; }
+.analytics-bars .bar-fill, .analytics-bars .grade-row:nth-child(3n + 1) .bar-fill { background: var(--bar-color, var(--primary-blue)); }
+.analytics-note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.analytics-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; margin: 24px 0 20px; }
+.analytics-filters label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; }
+.analytics-filters input { padding: 9px 12px; border: 1px solid var(--border); border-radius: 5px; background: white; color: var(--primary-blue); font: inherit; }
+.analytics-trip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.analytics-chart-total { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.analytics-chart-total strong { color: var(--primary-blue); font-size: 24px; margin-right: 5px; }
+.analytics-line-chart svg { height: auto; min-height: 190px; }
+.analytics-chart-data { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.analytics-chart-data summary { cursor: pointer; }
+.analytics-data-table { width: 100%; margin-top: 12px; border-collapse: collapse; text-align: left; }
+.analytics-data-table caption { text-align: left; margin-bottom: 8px; }
+.analytics-data-table th, .analytics-data-table td { padding: 6px; border-bottom: 1px solid var(--border); }
+@media (max-width: 1180px) { .analytics-trip-grid { grid-template-columns: minmax(0, 1fr); } }

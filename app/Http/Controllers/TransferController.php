@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Transfer;
+use App\Services\PackageStatusUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,8 +52,7 @@ class TransferController extends Controller
                 'waybill_numbers' => $numbers,
                 'created_by' => $request->user()->id,
             ]);
-            DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
-                ->update(['package_status' => 'for_transfer_dispatch']);
+            app(PackageStatusUpdater::class)->update($numbers, 'for_transfer_dispatch', $request->user()->id);
 
             return $transfer;
         });

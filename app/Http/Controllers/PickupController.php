@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Pickup;
+use App\Services\PackageStatusUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,8 +52,7 @@ class PickupController extends Controller
                 'waybill_numbers' => $numbers,
                 'created_by' => $request->user()->id,
             ]);
-            DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
-                ->update(['package_status' => 'for_pickup_dispatch']);
+            app(PackageStatusUpdater::class)->update($numbers, 'for_pickup_dispatch', $request->user()->id);
 
             return $pickup;
         });
@@ -85,8 +85,7 @@ class PickupController extends Controller
                 'status' => 'dispatched',
                 'created_at' => now(),
             ], $manifest->waybill_numbers));
-            DB::table('packages')->whereIn('waybill_number', $manifest->waybill_numbers)->whereNull('is_deleted')
-                ->update(['package_status' => 'pickup_dispatched']);
+            app(PackageStatusUpdater::class)->update($manifest->waybill_numbers, 'pickup_dispatched', auth()->id());
 
             return true;
         });

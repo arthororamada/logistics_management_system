@@ -6,10 +6,13 @@ use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\InteractsWithStatusLogs;
 use Tests\TestCase;
 
 class InboundManagementTest extends TestCase
 {
+    use InteractsWithStatusLogs;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -32,6 +35,7 @@ class InboundManagementTest extends TestCase
             $table->string('buyer_full_address', 100);
             $table->timestamp('is_deleted')->nullable();
         });
+        $this->createStatusLogsTable();
     }
 
     public function test_inbound_is_available_under_document_manifests(): void
@@ -64,6 +68,10 @@ class InboundManagementTest extends TestCase
             ->assertSessionMissing('inbound.waybill_numbers')->assertSessionHas('pickup.waybill_numbers', ['PICKUP-ONLY']);
         $this->assertDatabaseCount('inbounds', 0);
         $this->assertSame(6, DB::table('packages')->where('package_status', 'accepted_to_warehouse')->count());
+        foreach (['001234', 'WB-002', 'WB-003', 'WB-004', 'WB-005'] as $number) {
+            $this->assertStatusLogged($number, 'accepted_to_warehouse', $this->administrator()->id);
+        }
+        $this->assertDatabaseCount('status_logs', 5);
         $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-002', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_by_courier']);
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNSELECTED', 'package_status' => 'accepted_by_courier']);
     }

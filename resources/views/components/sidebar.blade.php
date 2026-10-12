@@ -8,7 +8,6 @@
         'Fleet Operations' => [
             ['label' => 'Personnel', 'icon' => 'users', 'route' => 'personnel.index', 'permission' => 'personnel.view'],
             ['label' => 'Vehicles', 'icon' => 'vehicles', 'route' => 'vehicles.index', 'permission' => 'vehicles.view'],
-            ['label' => 'Drivers', 'icon' => 'drivers'],
             ['label' => 'Trips', 'icon' => 'trips', 'route' => 'trips.index', 'permission' => 'trips.view'],
             ['label' => 'Maintenance', 'icon' => 'maintenance', 'route' => 'maintenances.index', 'permission' => 'maintenances.view'],
             ['label' => 'Notifications', 'icon' => 'bell', 'route' => 'notifications.index', 'permission' => 'maintenances.view'],

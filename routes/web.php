@@ -32,8 +32,7 @@ use App\Http\Controllers\TripRateController;
 use App\Http\Controllers\WaybillController;
 use App\Http\Controllers\TripStatusUpdaterController;
 use App\Http\Controllers\TripTypeController;
-use App\Models\Vehicle;
-use App\Models\VehicleStatus;
+use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -48,24 +47,13 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-$dashboardData = static fn () => [
-    'totalVehicles' => Vehicle::count(),
-    'vehicleStatusCounts' => Vehicle::query()->selectRaw('LOWER(vehicle_status) as status, COUNT(*) as total')->groupByRaw('LOWER(vehicle_status)')->pluck('total', 'status'),
-    'vehicleStatusColors' => VehicleStatus::pluck('color', 'vehicle_status')->mapWithKeys(fn ($color, $status) => [strtolower($status) => $color]),
-    'activeDrivers' => 96,
-    'scheduledTrips' => 42,
-    'utilizationRate' => 87.4,
-];
-
 Route::get('/', function () {
     return Auth::check()
         ? redirect()->route('dashboard')
         : view('auth.login');
 });
 
-Route::get('/dashboard', function () use ($dashboardData) {
-    return view('dashboard', $dashboardData());
-})->middleware(['auth', 'permission:dashboard.view'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'permission:dashboard.view'])->name('dashboard');
 
 Route::get('/template', function () {
     return view('template');

@@ -7,10 +7,13 @@ use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\InteractsWithStatusLogs;
 use Tests\TestCase;
 
 class PickupManagementTest extends TestCase
 {
+    use InteractsWithStatusLogs;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,6 +46,7 @@ class PickupManagementTest extends TestCase
             $table->string('buyer_full_address', 100);
             $table->timestamp('is_deleted')->nullable();
         });
+        $this->createStatusLogsTable();
     }
 
     public function test_administrator_can_open_pickup_from_document_manifests(): void
@@ -73,7 +77,9 @@ class PickupManagementTest extends TestCase
         $this->assertSame(['001234', 'WB-002', 'WB-003', 'WB-004', 'WB-005'], $pickup->waybill_numbers);
         $this->assertSame($this->administrator()->id, $pickup->created_by);
         $this->assertDatabaseCount('pickup_details', 0);
+        $this->assertDatabaseCount('status_logs', 5);
         foreach ($pickup->waybill_numbers as $number) {
+            $this->assertStatusLogged($number, 'for_pickup_dispatch', $this->administrator()->id);
             $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_pickup_dispatch']);
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'for_pickup']);
@@ -81,6 +87,12 @@ class PickupManagementTest extends TestCase
         $this->get(route('pickup.show', $pickup))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:');
         $this->post(route('pickup.dispatch', $pickup))->assertSessionHasNoErrors();
         $this->assertDatabaseCount('pickup_details', 5);
+        foreach ($pickup->waybill_numbers as $number) {
+            $this->assertStatusLogged($number, 'pickup_dispatched', $this->administrator()->id);
+        }
+        $this->assertDatabaseCount('status_logs', 10);
+        $this->post(route('pickup.dispatch', $pickup))->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('status_logs', 10);
         $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => null, 'package_status' => 'pickup_dispatched']);
     }
 
