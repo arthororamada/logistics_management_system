@@ -51,7 +51,7 @@ class ReturnController extends Controller
                 'waybill_numbers' => $numbers,
                 'created_by' => $request->user()->id,
             ]);
-            DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
+            DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
                 ->update(['package_status' => 'for_return_dispatch']);
 
             return $returnManifest;
@@ -64,7 +64,7 @@ class ReturnController extends Controller
     public function show(ReturnManifest $returnManifest): View
     {
         $details = DB::table('return_details')->where('dm', $returnManifest->id)->get()->keyBy('waybill_number');
-        $packages = DB::table('packages')->whereIn('waybill_number', $returnManifest->waybill_numbers)->where('is_deleted', 0)->get()->groupBy('waybill_number');
+        $packages = DB::table('packages')->whereIn('waybill_number', $returnManifest->waybill_numbers)->whereNull('is_deleted')->get()->groupBy('waybill_number');
         $creator = DB::table('users')->where('id', $returnManifest->created_by)->value('name');
 
         return view('return.show', compact('returnManifest', 'details', 'packages', 'creator'));
@@ -85,7 +85,7 @@ class ReturnController extends Controller
                 'status' => 'dispatched',
                 'created_at' => now(),
             ], $manifest->waybill_numbers));
-            DB::table('packages')->whereIn('waybill_number', $manifest->waybill_numbers)->where('is_deleted', 0)
+            DB::table('packages')->whereIn('waybill_number', $manifest->waybill_numbers)->whereNull('is_deleted')
                 ->update(['package_status' => 'return_dispatched']);
 
             return true;
@@ -109,7 +109,7 @@ class ReturnController extends Controller
             throw ValidationException::withMessages(['waybill_numbers' => $validator->errors()->all()]);
         }
 
-        $query = DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)->orderBy('id');
+        $query = DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')->orderBy('id');
         if ($lock) {
             $query->lockForUpdate();
         }

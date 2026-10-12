@@ -44,7 +44,7 @@ class InboundController extends Controller
         DB::transaction(function () use ($numbers) {
             $this->validateWaybills($numbers, true);
 
-            DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
+            DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
                 ->update(['package_status' => 'accepted_to_warehouse']);
         });
         $request->session()->forget('inbound.waybill_numbers');
@@ -66,7 +66,7 @@ class InboundController extends Controller
             throw ValidationException::withMessages(['waybill_numbers' => $validator->errors()->all()]);
         }
 
-        $query = DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0);
+        $query = DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted');
         if ($lock) {
             $query->lockForUpdate();
         }

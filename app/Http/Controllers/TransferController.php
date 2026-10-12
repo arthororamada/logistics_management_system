@@ -51,7 +51,7 @@ class TransferController extends Controller
                 'waybill_numbers' => $numbers,
                 'created_by' => $request->user()->id,
             ]);
-            DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
+            DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
                 ->update(['package_status' => 'for_transfer_dispatch']);
 
             return $transfer;
@@ -64,7 +64,7 @@ class TransferController extends Controller
     public function show(Transfer $transfer): View
     {
         $details = DB::table('transfer_details')->where('dm', $transfer->id)->get()->keyBy('waybill_number');
-        $packages = DB::table('packages')->whereIn('waybill_number', $transfer->waybill_numbers)->where('is_deleted', 0)->get()->groupBy('waybill_number');
+        $packages = DB::table('packages')->whereIn('waybill_number', $transfer->waybill_numbers)->whereNull('is_deleted')->get()->groupBy('waybill_number');
         $creator = DB::table('users')->where('id', $transfer->created_by)->value('name');
 
         return view('transfer.show', compact('transfer', 'details', 'packages', 'creator'));
@@ -107,7 +107,7 @@ class TransferController extends Controller
             throw ValidationException::withMessages(['waybill_numbers' => $validator->errors()->all()]);
         }
 
-        $query = DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)->orderBy('id');
+        $query = DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')->orderBy('id');
         if ($lock) {
             $query->lockForUpdate();
         }

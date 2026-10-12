@@ -17,6 +17,9 @@ class TransferManagementTest extends TestCase
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:']);
         DB::purge('sqlite');
         $this->withoutVite();
+        // This isolated manifest schema does not include the topbar maintenance tables.
+        $this->mock(\App\Services\MaintenanceAlertService::class)
+            ->shouldReceive('all')->andReturn(collect());
 
         (require database_path('migrations/2014_10_12_000000_create_users_table.php'))->up();
         User::create(['name' => 'Administrator', 'username' => 'admin', 'password' => 'test-password']);
@@ -37,7 +40,7 @@ class TransferManagementTest extends TestCase
             $table->string('package_status', 100);
             $table->string('buyer_name');
             $table->string('buyer_full_address', 100);
-            $table->boolean('is_deleted')->default(false);
+            $table->timestamp('is_deleted')->nullable();
         });
     }
 
@@ -71,11 +74,11 @@ class TransferManagementTest extends TestCase
         $this->assertSame($this->administrator()->id, $transfer->created_by);
         $this->assertDatabaseCount('transfer_details', 0);
         foreach ($transfer->waybill_numbers as $number) {
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => 0, 'package_status' => 'for_transfer_dispatch']);
+            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_transfer_dispatch']);
         }
         $this->assertSame(6, DB::table('packages')->where('package_status', 'for_transfer_dispatch')->count());
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'accepted_to_warehouse']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
         $this->get(route('transfer.show', $transfer))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:')->assertDontSee('Destination warehouse:');
     }
 
@@ -183,10 +186,10 @@ class TransferManagementTest extends TestCase
         $this->assertDatabaseCount('transfer_details', 2);
         foreach ($transfer->waybill_numbers as $number) {
             $this->assertDatabaseHas('transfer_details', ['dm' => $transfer->id, 'waybill_number' => $number, 'status' => 'dispatched']);
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => 0, 'package_status' => 'for_transfer_dispatch']);
+            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_transfer_dispatch']);
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'accepted_to_warehouse']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
         $this->assertNotNull(DB::table('transfer_details')->first()->created_at);
         $this->get(route('transfer.show', $transfer))->assertOk()->assertSee('dispatched')->assertDontSee('Dispatch Document Manifest');
     }
@@ -227,7 +230,7 @@ class TransferManagementTest extends TestCase
         DB::table('packages')->insert([
             'waybill_number' => $number, 'package_id' => 'PKG-'.$number,
             'package_status' => 'accepted_to_warehouse', 'buyer_name' => 'Test Buyer',
-            'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted,
+            'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted ? '2026-01-01 00:00:00' : null,
         ]);
     }
 
@@ -253,7 +256,7 @@ class TransferManagementTest extends TestCase
             ->assertSessionHasErrors('waybill_numbers')->assertSessionHas('transfer.waybill_numbers', ['VALID']);
         $this->get(route('transfer.index'))->assertSee('Waybill MIXED must have package status accepted_to_warehouse');
         $this->package('VALID', true);
-        DB::table('packages')->where('waybill_number', 'VALID')->where('is_deleted', 1)
+        DB::table('packages')->where('waybill_number', 'VALID')->whereNotNull('is_deleted')
             ->update(['package_status' => 'pending']);
         $this->post(route('transfer.waybills.add'), ['waybill_numbers' => 'VALID'])->assertSessionHasNoErrors();
     }

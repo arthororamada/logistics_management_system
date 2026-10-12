@@ -17,6 +17,9 @@ class PickupManagementTest extends TestCase
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:']);
         DB::purge('sqlite');
         $this->withoutVite();
+        // This isolated manifest schema does not include the topbar maintenance tables.
+        $this->mock(\App\Services\MaintenanceAlertService::class)
+            ->shouldReceive('all')->andReturn(collect());
 
         (require database_path('migrations/2014_10_12_000000_create_users_table.php'))->up();
         User::create(['name' => 'Administrator', 'username' => 'admin', 'password' => 'test-password']);
@@ -38,7 +41,7 @@ class PickupManagementTest extends TestCase
             $table->string('package_status', 100);
             $table->string('buyer_name');
             $table->string('buyer_full_address', 100);
-            $table->boolean('is_deleted')->default(false);
+            $table->timestamp('is_deleted')->nullable();
         });
     }
 
@@ -71,14 +74,14 @@ class PickupManagementTest extends TestCase
         $this->assertSame($this->administrator()->id, $pickup->created_by);
         $this->assertDatabaseCount('pickup_details', 0);
         foreach ($pickup->waybill_numbers as $number) {
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => 0, 'package_status' => 'for_pickup_dispatch']);
+            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_pickup_dispatch']);
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'for_pickup']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'for_pickup']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'for_pickup']);
         $this->get(route('pickup.show', $pickup))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:');
         $this->post(route('pickup.dispatch', $pickup))->assertSessionHasNoErrors();
         $this->assertDatabaseCount('pickup_details', 5);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 0, 'package_status' => 'pickup_dispatched']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => null, 'package_status' => 'pickup_dispatched']);
     }
 
     public function test_unknown_and_deleted_waybills_reject_the_batch_and_preserve_the_draft(): void
@@ -174,7 +177,7 @@ class PickupManagementTest extends TestCase
         $this->package('UNRELATED');
         $this->package('001234', true);
         $pickup = $this->manifest(['001234', 'WB-002']);
-        DB::table('packages')->whereIn('waybill_number', $pickup->waybill_numbers)->where('is_deleted', 0)
+        DB::table('packages')->whereIn('waybill_number', $pickup->waybill_numbers)->whereNull('is_deleted')
             ->update(['package_status' => 'for_pickup_dispatch']);
         for ($attempt = 0; $attempt < 2; $attempt++) {
             $this->actingAs($this->administrator())->post(route('pickup.dispatch', $pickup))
@@ -183,10 +186,10 @@ class PickupManagementTest extends TestCase
         $this->assertDatabaseCount('pickup_details', 2);
         foreach ($pickup->waybill_numbers as $number) {
             $this->assertDatabaseHas('pickup_details', ['dm' => $pickup->id, 'waybill_number' => $number, 'status' => 'dispatched']);
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => 0, 'package_status' => 'pickup_dispatched']);
+            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'pickup_dispatched']);
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'for_pickup']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'for_pickup']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'for_pickup']);
         $this->assertNotNull(DB::table('pickup_details')->first()->created_at);
         $this->get(route('pickup.show', $pickup))->assertOk()->assertSee('dispatched')->assertDontSee('Dispatch Document Manifest');
     }
@@ -227,7 +230,7 @@ class PickupManagementTest extends TestCase
         DB::table('packages')->insert([
             'waybill_number' => $number, 'package_id' => 'PKG-'.$number,
             'package_status' => 'for_pickup', 'buyer_name' => 'Test Buyer',
-            'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted,
+            'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted ? '2026-01-01 00:00:00' : null,
         ]);
     }
 
@@ -253,7 +256,7 @@ class PickupManagementTest extends TestCase
             ->assertSessionHasErrors('waybill_numbers')->assertSessionHas('pickup.waybill_numbers', ['VALID']);
         $this->get(route('pickup.index'))->assertSee('Waybill MIXED must have package status for_pickup');
         $this->package('VALID', true);
-        DB::table('packages')->where('waybill_number', 'VALID')->where('is_deleted', 1)->update(['package_status' => 'pending']);
+        DB::table('packages')->where('waybill_number', 'VALID')->whereNotNull('is_deleted')->update(['package_status' => 'pending']);
         $this->post(route('pickup.waybills.add'), ['waybill_numbers' => 'VALID'])->assertSessionHasNoErrors();
     }
 

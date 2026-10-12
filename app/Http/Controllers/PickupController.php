@@ -51,7 +51,7 @@ class PickupController extends Controller
                 'waybill_numbers' => $numbers,
                 'created_by' => $request->user()->id,
             ]);
-            DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
+            DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
                 ->update(['package_status' => 'for_pickup_dispatch']);
 
             return $pickup;
@@ -64,7 +64,7 @@ class PickupController extends Controller
     public function show(Pickup $pickup): View
     {
         $details = DB::table('pickup_details')->where('dm', $pickup->id)->get()->keyBy('waybill_number');
-        $packages = DB::table('packages')->whereIn('waybill_number', $pickup->waybill_numbers)->where('is_deleted', 0)->get()->groupBy('waybill_number');
+        $packages = DB::table('packages')->whereIn('waybill_number', $pickup->waybill_numbers)->whereNull('is_deleted')->get()->groupBy('waybill_number');
         $creator = DB::table('users')->where('id', $pickup->created_by)->value('name');
 
         return view('pickup.show', compact('pickup', 'details', 'packages', 'creator'));
@@ -85,7 +85,7 @@ class PickupController extends Controller
                 'status' => 'dispatched',
                 'created_at' => now(),
             ], $manifest->waybill_numbers));
-            DB::table('packages')->whereIn('waybill_number', $manifest->waybill_numbers)->where('is_deleted', 0)
+            DB::table('packages')->whereIn('waybill_number', $manifest->waybill_numbers)->whereNull('is_deleted')
                 ->update(['package_status' => 'pickup_dispatched']);
 
             return true;
@@ -109,7 +109,7 @@ class PickupController extends Controller
             throw ValidationException::withMessages(['waybill_numbers' => $validator->errors()->all()]);
         }
 
-        $packages = DB::table('packages')->whereIn('waybill_number', $numbers)->where('is_deleted', 0)
+        $packages = DB::table('packages')->whereIn('waybill_number', $numbers)->whereNull('is_deleted')
             ->get(['waybill_number', 'package_status']);
         $existing = $packages->pluck('waybill_number')->all();
         $wrongStatus = $packages->filter(fn ($package) => $package->package_status !== $requiredStatus)

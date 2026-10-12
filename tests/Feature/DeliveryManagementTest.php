@@ -17,6 +17,9 @@ class DeliveryManagementTest extends TestCase
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:']);
         DB::purge('sqlite');
         $this->withoutVite();
+        // This isolated manifest schema does not include the topbar maintenance tables.
+        $this->mock(\App\Services\MaintenanceAlertService::class)
+            ->shouldReceive('all')->andReturn(collect());
 
         (require database_path('migrations/2014_10_12_000000_create_users_table.php'))->up();
         User::create(['name' => 'Administrator', 'username' => 'admin', 'password' => 'test-password']);
@@ -37,7 +40,7 @@ class DeliveryManagementTest extends TestCase
             $table->string('package_status', 100);
             $table->string('buyer_name');
             $table->string('buyer_full_address', 100);
-            $table->boolean('is_deleted')->default(false);
+            $table->timestamp('is_deleted')->nullable();
         });
     }
 
@@ -70,14 +73,14 @@ class DeliveryManagementTest extends TestCase
         $this->assertSame($this->administrator()->id, $delivery->created_by);
         $this->assertDatabaseCount('delivery_details', 0);
         foreach ($delivery->waybill_numbers as $number) {
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => 0, 'package_status' => 'for_delivery_dispatch']);
+            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'for_delivery_dispatch']);
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'accepted_to_warehouse']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
         $this->get(route('delivery.show', $delivery))->assertOk()->assertSee('Dispatch Document Manifest')->assertSee('Test Buyer')->assertDontSee('Driver:');
         $this->post(route('delivery.dispatch', $delivery))->assertSessionHasNoErrors();
         $this->assertDatabaseCount('delivery_details', 5);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 0, 'package_status' => 'delivery_dispatched']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => null, 'package_status' => 'delivery_dispatched']);
     }
 
     public function test_unknown_and_deleted_waybills_reject_the_batch_and_preserve_the_draft(): void
@@ -173,7 +176,7 @@ class DeliveryManagementTest extends TestCase
         $this->package('UNRELATED');
         $this->package('001234', true);
         $delivery = $this->manifest(['001234', 'WB-002']);
-        DB::table('packages')->whereIn('waybill_number', $delivery->waybill_numbers)->where('is_deleted', 0)
+        DB::table('packages')->whereIn('waybill_number', $delivery->waybill_numbers)->whereNull('is_deleted')
             ->update(['package_status' => 'for_delivery_dispatch']);
         for ($attempt = 0; $attempt < 2; $attempt++) {
             $this->actingAs($this->administrator())->post(route('delivery.dispatch', $delivery))
@@ -182,10 +185,10 @@ class DeliveryManagementTest extends TestCase
         $this->assertDatabaseCount('delivery_details', 2);
         foreach ($delivery->waybill_numbers as $number) {
             $this->assertDatabaseHas('delivery_details', ['dm' => $delivery->id, 'waybill_number' => $number, 'status' => 'dispatched']);
-            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => 0, 'package_status' => 'delivery_dispatched']);
+            $this->assertDatabaseHas('packages', ['waybill_number' => $number, 'is_deleted' => null, 'package_status' => 'delivery_dispatched']);
         }
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNRELATED', 'package_status' => 'accepted_to_warehouse']);
-        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => 1, 'package_status' => 'accepted_to_warehouse']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => '001234', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_to_warehouse']);
         $this->assertNotNull(DB::table('delivery_details')->first()->created_at);
         $this->get(route('delivery.show', $delivery))->assertOk()->assertSee('dispatched')->assertDontSee('Dispatch Document Manifest');
     }
@@ -226,7 +229,7 @@ class DeliveryManagementTest extends TestCase
         DB::table('packages')->insert([
             'waybill_number' => $number, 'package_id' => 'PKG-'.$number,
             'package_status' => 'accepted_to_warehouse', 'buyer_name' => 'Test Buyer',
-            'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted,
+            'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted ? '2026-01-01 00:00:00' : null,
         ]);
     }
 
@@ -289,7 +292,7 @@ class DeliveryManagementTest extends TestCase
             ->assertSessionHasErrors('waybill_numbers')->assertSessionHas('delivery.waybill_numbers', ['VALID']);
         $this->get(route('delivery.index'))->assertSee('Waybill MIXED must have package status accepted_to_warehouse');
         $this->package('VALID', true);
-        DB::table('packages')->where('waybill_number', 'VALID')->where('is_deleted', 1)->update(['package_status' => 'pending']);
+        DB::table('packages')->where('waybill_number', 'VALID')->whereNotNull('is_deleted')->update(['package_status' => 'pending']);
         $this->post(route('delivery.waybills.add'), ['waybill_numbers' => 'VALID'])->assertSessionHasNoErrors();
     }
 

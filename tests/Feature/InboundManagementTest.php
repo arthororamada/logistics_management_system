@@ -16,6 +16,9 @@ class InboundManagementTest extends TestCase
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:']);
         DB::purge('sqlite');
         $this->withoutVite();
+        // This isolated manifest schema does not include the topbar maintenance tables.
+        $this->mock(\App\Services\MaintenanceAlertService::class)
+            ->shouldReceive('all')->andReturn(collect());
         (require database_path('migrations/2014_10_12_000000_create_users_table.php'))->up();
         User::create(['name' => 'Administrator', 'username' => 'admin', 'password' => 'test-password']);
         (require database_path('migrations/2026_08_31_010000_create_roles_and_permissions_tables.php'))->up();
@@ -27,7 +30,7 @@ class InboundManagementTest extends TestCase
             $table->string('package_status', 100);
             $table->string('buyer_name');
             $table->string('buyer_full_address', 100);
-            $table->boolean('is_deleted')->default(false);
+            $table->timestamp('is_deleted')->nullable();
         });
     }
 
@@ -61,7 +64,7 @@ class InboundManagementTest extends TestCase
             ->assertSessionMissing('inbound.waybill_numbers')->assertSessionHas('pickup.waybill_numbers', ['PICKUP-ONLY']);
         $this->assertDatabaseCount('inbounds', 0);
         $this->assertSame(6, DB::table('packages')->where('package_status', 'accepted_to_warehouse')->count());
-        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-002', 'is_deleted' => 1, 'package_status' => 'accepted_by_courier']);
+        $this->assertDatabaseHas('packages', ['waybill_number' => 'WB-002', 'is_deleted' => '2026-01-01 00:00:00', 'package_status' => 'accepted_by_courier']);
         $this->assertDatabaseHas('packages', ['waybill_number' => 'UNSELECTED', 'package_status' => 'accepted_by_courier']);
     }
 
@@ -149,7 +152,7 @@ class InboundManagementTest extends TestCase
         DB::table('packages')->insert([
             'waybill_number' => $number, 'package_id' => 'PKG-'.$number,
             'package_status' => $status, 'buyer_name' => 'Test Buyer',
-            'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted,
+            'buyer_full_address' => 'Test Address', 'is_deleted' => $deleted ? '2026-01-01 00:00:00' : null,
         ]);
     }
 
