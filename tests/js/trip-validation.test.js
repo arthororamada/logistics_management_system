@@ -5,11 +5,11 @@ import { readTripResponse } from '../../resources/js/trip-dialogs.js';
 
 const complete = () => ({ waybills: [{ dm_id: 1, waybill_number: 'WB-1', drops_number: 1, quantity: 1, kilogram: 1, cbm: 0.5 }], trip_no: '1', trip_type: 'Delivery', payment_type: 'Cash', tariff_id: 1, vehicle_id: 1, personnels: [{ employee_id: 1, designation: 'Driver' }], segments: [{ origin_id: 1, destination_id: 2, total_distance: 10 }], costs: [{ cost_code: 1, cost_amount: 0 }] });
 
-test('trip number accepts only dropdown selections and groups failures under general information', () => {
-    for (const trip_no of ['1', '2', '3', '4', '5', 1, 2, 3, 4, 5]) {
+test('trip number accepts configured text identifiers and groups failures under general information', () => {
+    for (const trip_no of ['1', '2', 'LOCAL-01', 'RATE-CEB']) {
         assert.deepEqual(tripSaveErrors({ ...complete(), trip_no }), {});
     }
-    for (const trip_no of [undefined, null, '', ' ', 0, 6, -1, '1.5', '01', 'abc']) {
+    for (const trip_no of [undefined, null, '', ' ', 'X'.repeat(51)]) {
         const errors = tripSaveErrors({ ...complete(), trip_no });
         assert.ok(errors.trip_no);
         assert.deepEqual(Object.keys(tripErrorSections(errors)), ['general']);

@@ -31,8 +31,8 @@ export function tripSaveErrors(payload, invalidFields = {}) {
     for (const field of ['trip_no', 'trip_type', 'payment_type', 'tariff_id', 'vehicle_id']) {
         if (!String(payload[field] ?? '').trim() && !Object.hasOwn(errors, field)) errors[field] = ['Required.'];
     }
-    if (payload.trip_no != null && String(payload.trip_no).trim() !== '' && !['1', '2', '3', '4', '5'].includes(String(payload.trip_no))) {
-        errors.trip_no = ['Please select a trip number from 1 to 5.'];
+    if (String(payload.trip_no ?? '').length > 50) {
+        errors.trip_no = ['Trip number must not exceed 50 characters.'];
     }
     if (!payload.personnels?.some(person => person.designation?.toLowerCase() === 'driver')) errors.personnels = [];
     if (!payload.waybills?.length) errors.waybills = [tripSectionMessages.waybills];

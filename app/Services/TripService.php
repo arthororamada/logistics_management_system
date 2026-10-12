@@ -31,7 +31,7 @@ class TripService
         }
         $tariff = $trip->tariff_id ? TripRate::findOrFail($trip->tariff_id) : null;
         if ($tariff) {
-            if (! $vehicle || $tariff->vehicle_group !== $vehicle->vehicle_group || $tariff->vehicle_type !== $vehicle->vehicle_type || $tariff->warehouse_code !== $vehicle->warehouse_code || $tariff->trip_type !== $trip->trip_type || $tariff->payment_type !== $trip->payment_type || (float) $vehicle->cargo_capacity < (float) $tariff->cargo_capacity) {
+            if (! $tariff->matchesVehicle($vehicle) || $tariff->trip_type !== $trip->trip_type || $tariff->payment_type !== $trip->payment_type) {
                 throw ValidationException::withMessages(['tariff_id' => 'Trip Rate must match the vehicle warehouse, group, type, capacity, trip type and payment type.']);
             }
         }
@@ -64,10 +64,12 @@ class TripService
             $previous = $existingByEmployee->get($person['employee_id']);
             $previousRelease = $this->cents($previous?->cash_released ?? 0);
             $requestedRelease = $disbursements->get($person['employee_id']);
-            $cash = $requestedRelease ? $this->cents($requestedRelease['cash_released']) : $previousRelease;
-            if ($cash < $previousRelease) {
-                throw ValidationException::withMessages(['disbursements' => 'Already released funds cannot be reduced through the standard editing interface.']);
+            if ($requestedRelease && $this->cents($requestedRelease['cash_released']) > $salary) {
+                throw ValidationException::withMessages(['disbursements' => 'Calculated salary cannot be less than the amount requested for release.']);
             }
+            // Personnel position is the existing designation source; classification is a fallback.
+            $classification = filled($employee->position) ? $employee->position : $employee->personnel_type;
+            $cash = max($previousRelease, $tariff->personnelCashReleaseCents((string) $classification));
             if ($cash > $salary) {
                 throw ValidationException::withMessages(['disbursements' => 'Calculated salary cannot be less than the amount already released or requested for release.']);
             }
@@ -231,9 +233,6 @@ class TripService
             if (! $trip->$field) {
                 $errors[$field] = TripFormValidation::MESSAGES[TripFormValidation::section($field)];
             }
-        }
-        if ($trip->trip_no && ! in_array((string) $trip->trip_no, ['1', '2', '3', '4', '5'], true)) {
-            $errors['trip_no'] = 'Please select a trip number from 1 to 5.';
         }
         if (! $trip->personnels()->whereRaw('LOWER(designation) = ?', ['driver'])->exists()) {
             $errors['personnels'] = TripFormValidation::MESSAGES['personnels'];

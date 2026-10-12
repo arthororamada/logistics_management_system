@@ -86,7 +86,7 @@ class TripController extends Controller
             'shippingRates' => ShippingRate::where('is_active', true)->get(),
         ];
         $data['shippingLines'] = $data['shippingRates']->pluck('shipping_line_name')->unique()->sort()->values();
-        $data['designations'] = $data['employees']->where('is_active', true)->pluck('position')->filter(fn ($position) => trim((string) $position) !== '')->unique(fn ($position) => mb_strtolower($position))->sort()->values();
+        $data['designations'] = $data['employees']->where('is_active', true)->map(fn ($employee) => filled($employee->position) ? $employee->position : $employee->personnel_type)->filter(fn ($position) => trim((string) $position) !== '')->unique(fn ($position) => mb_strtolower($position))->sort()->values();
         $data['availableCostCodes'] = OtherCost::availableTo($request->user())->orderBy('cost_code')->get()->keyBy('id');
         $fuelCode = $data['availableCostCodes']->first(fn ($code) => strtoupper(trim($code->cost_code)) === 'FUEL_PURCHASE');
         $data['costRows'] = $trip->costs->toArray();

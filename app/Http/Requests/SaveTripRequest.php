@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Personnel;
 use App\Services\TripFormValidation;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -30,8 +31,6 @@ class SaveTripRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'trip_no.in' => 'Please select a trip number from 1 to 5.',
-            'trip_no.integer' => 'Please select a trip number from 1 to 5.',
             'personnels.*.employee_id.exists' => 'Select existing Active personnel to assign to a trip.',
             'personnels.required' => TripFormValidation::MESSAGES['personnels'],
             'segments.required' => TripFormValidation::MESSAGES['segments'],
@@ -59,6 +58,8 @@ class SaveTripRequest extends FormRequest
     {
         $active = fn ($table, $column = 'id') => Rule::exists($table, $column)->where('is_active', true);
         $amount = 'required|numeric|min:0|max:999999.99|decimal:0,2';
+        $designations = Personnel::where('is_active', true)->get(['position', 'personnel_type'])
+            ->map(fn ($person) => mb_strtolower(trim(filled($person->position) ? $person->position : $person->personnel_type)))->all();
 
         return [
             'waybills' => 'required|array|min:1|max:2000',
@@ -72,7 +73,7 @@ class SaveTripRequest extends FormRequest
             'version' => 'required|integer|min:0',
             'vehicle_id' => ['required', 'integer', Rule::exists('vehicles', 'id')],
             'tariff_id' => ['required', 'integer', $active('trip_rates')],
-            'trip_no' => 'required|integer|in:1,2,3,4,5',
+            'trip_no' => 'required|string|max:50',
             'trip_type' => ['required', 'string', $active('trip_types', 'trip_type')],
             'payment_type' => ['required', 'string', $active('trip_payments', 'payment_type')],
             'drops_number' => 'required|integer|min:0|max:10000',
@@ -80,7 +81,11 @@ class SaveTripRequest extends FormRequest
             'personnels' => 'required|array|min:1|max:100',
             'personnels.*.id' => 'nullable|integer|distinct',
             'personnels.*.employee_id' => ['required', 'integer', 'distinct', $active('personnel')],
-            'personnels.*.designation' => ['required', 'string', 'max:100', $active('personnel', 'position')],
+            'personnels.*.designation' => ['required', 'string', 'max:100', function ($attribute, $value, $fail) use ($designations) {
+                if (! is_string($value) || ! in_array(mb_strtolower(trim($value)), $designations, true)) {
+                    $fail('Select a designation configured for Active personnel.');
+                }
+            }],
             'personnels.*.cash_released' => 'prohibited',
             'personnels.*.non_cash_released' => 'prohibited',
             'personnels.*.salary' => 'nullable|numeric|min:0|max:999999.99|decimal:0,2',

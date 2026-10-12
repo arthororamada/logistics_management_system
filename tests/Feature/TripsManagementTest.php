@@ -45,28 +45,24 @@ class TripsManagementTest extends TestCase
         $this->get(route('trips.show', $trip))->assertOk()->assertSee('Saved trip document')->assertSee($trip->trip_id);
     }
 
-    public function test_trip_number_dropdown_saves_each_option_and_restores_the_selection(): void
+    public function test_configured_trip_number_is_saved_and_restored_when_editing(): void
     {
         $trip = $this->draft();
         $payload = $this->payload();
-        $response = $this->get(route('trips.show', $trip))->assertOk();
+        $rate = TripRate::findOrFail($payload['tariff_id']);
+        $payload['trip_no'] = $rate->trip_number;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertSame($rate->trip_number, $trip->fresh()->trip_no);
         $document = new \DOMDocument;
-        @$document->loadHTML($response->getContent());
+        @$document->loadHTML($this->get(route('trips.show', $trip))->assertOk()->getContent());
         $xpath = new \DOMXPath($document);
-        $options = $xpath->query('//select[@name="trip_no" and @required]/option');
-        $this->assertEquals(['', '1', '2', '3', '4', '5'], array_map(fn ($option) => $option->getAttribute('value'), iterator_to_array($options)));
-        $this->assertEquals('Select Trip Number', $options->item(0)->textContent);
-        $this->assertEquals(0, $xpath->query('//input[@name="trip_no"]')->length);
-        foreach (range(1, 5) as $number) {
-            $payload['trip_no'] = $number % 2 ? (string) $number : $number;
-            $payload['version'] = $trip->fresh()->version;
-            $this->putJson(route('trips.update', $trip), $payload)->assertOk();
-            $this->assertSame((string) $number, $trip->fresh()->trip_no);
-            $this->assertSame('Open', $trip->fresh()->current_status);
-            @$document->loadHTML($this->get(route('trips.show', $trip))->assertOk()->getContent());
-            $xpath = new \DOMXPath($document);
-            $this->assertEquals((string) $number, $xpath->query('//select[@name="trip_no"]/option[@selected]')->item(0)->getAttribute('value'));
-        }
+        $input = $xpath->query('//input[@name="trip_no" and @required and @readonly]')->item(0);
+        $this->assertEquals($rate->trip_number, $input->getAttribute('value'));
+        $payload['version'] = $trip->fresh()->version;
+        $payload['personnels'][0]['id'] = $trip->personnels()->first()->id;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertSame($rate->trip_number, $trip->fresh()->trip_no);
+        $this->assertEquals(1, $trip->personnels()->count());
     }
 
     public function test_missing_or_invalid_trip_numbers_cannot_save_new_or_existing_trips(): void
@@ -79,7 +75,7 @@ class TripsManagementTest extends TestCase
             }
             $payload['version'] = $trip->fresh()->version;
             $before = $trip->fresh()->trip_no;
-            foreach ([null, '', ' ', 0, 6, -1, '1.5', '01', 'abc', ['1']] as $number) {
+            foreach ([null, '', ' ', str_repeat('X', 51), ['1']] as $number) {
                 $invalid = array_replace($payload, ['trip_no' => $number]);
                 $this->putJson(route('trips.update', $trip), $invalid)->assertUnprocessable()
                     ->assertJsonValidationErrors('trip_no')
@@ -94,15 +90,14 @@ class TripsManagementTest extends TestCase
         }
     }
 
-    public function test_dispatch_rejects_legacy_trip_numbers_outside_the_dropdown(): void
+    public function test_dispatch_accepts_saved_configured_text_trip_numbers(): void
     {
         $trip = $this->draft();
-        $this->putJson(route('trips.update', $trip), $this->payload())->assertOk();
-        $trip->refresh()->update(['trip_no' => 'LEGACY']);
-        $this->postJson(route('trips.dispatch', $trip))->assertUnprocessable()
-            ->assertJsonValidationErrors('trip_no')
-            ->assertJsonPath('errors.trip_no.0', 'Please select a trip number from 1 to 5.');
-        $this->assertSame('Open', $trip->fresh()->current_status);
+        $payload = $this->payload();
+        $payload['trip_no'] = TripRate::findOrFail($payload['tariff_id'])->trip_number;
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->postJson(route('trips.dispatch', $trip))->assertOk();
+        $this->assertSame('Dispatched', $trip->fresh()->current_status);
     }
 
     public function test_saving_related_rows_updates_existing_trip_and_calculates_totals(): void
@@ -115,8 +110,8 @@ class TripsManagementTest extends TestCase
         $this->assertEquals(100, $trip->total_distance);
         $this->assertEquals(25, $trip->total_liters_required);
         $this->assertEquals(600, $trip->fuel_price);
-        $this->assertEquals(50, $trip->total_released);
-        $this->assertEquals(1700, $trip->total_nonreleased);
+        $this->assertEquals(650, $trip->total_released);
+        $this->assertEquals(1100, $trip->total_nonreleased);
         $this->assertEquals(1750, $trip->total_cost);
         $this->assertEquals(1100, $trip->personnels->first()->salary);
         $this->assertEquals(Vehicle::find($payload['vehicle_id'])->body_number, $trip->van_number);
@@ -364,7 +359,7 @@ class TripsManagementTest extends TestCase
         @$document->loadHTML('<?xml encoding="UTF-8">'.$response->getContent());
         $xpath = new \DOMXPath($document);
         $sections = $xpath->query('//form[@id="trip-form"]/section[@data-trip-section]');
-        $this->assertEquals(['general', 'vehicle', 'segments', 'personnels', 'waybills', 'costs', 'disbursements'], array_map(fn ($section) => $section->getAttribute('data-trip-section'), iterator_to_array($sections)));
+        $this->assertEquals(['vehicle', 'general', 'segments', 'personnels', 'waybills', 'costs', 'disbursements'], array_map(fn ($section) => $section->getAttribute('data-trip-section'), iterator_to_array($sections)));
         $this->assertEquals(0, $xpath->query('//*[@data-trip-collection="fuel_purchases" or @id="trip-template-fuel_purchases"]')->length);
         $this->assertEquals(1, $xpath->query('//section[@data-trip-section="costs"]//input[contains(@name,"[fuel_purchase_id]")]')->length);
         foreach ($sections as $section) {
@@ -373,7 +368,7 @@ class TripsManagementTest extends TestCase
             $this->assertEquals(1, $xpath->query('.//button[@data-card-toggle and @aria-expanded="false"]', $section)->length);
         }
         $generalNames = $xpath->query('//section[@data-trip-section="general"]//*[@name]');
-        $this->assertEquals(['trip_no', 'drops_number', 'trip_type', 'payment_type', 'tariff_id'], array_map(fn ($input) => $input->getAttribute('name'), iterator_to_array($generalNames)));
+        $this->assertEquals(['tariff_id', 'trip_no', 'drops_number', 'trip_type', 'payment_type'], array_map(fn ($input) => $input->getAttribute('name'), iterator_to_array($generalNames)));
         $personnelLabels = $xpath->query('//section[@data-trip-section="personnels"]//div[@data-trip-row][not(ancestor::template)]//label');
         $this->assertCount(3, $personnelLabels);
         $personnelNames = $xpath->query('//section[@data-trip-section="personnels"]//*[@name]');
@@ -393,6 +388,7 @@ class TripsManagementTest extends TestCase
     {
         $trip = $this->draft();
         $payload = $this->payload();
+        TripRate::findOrFail($payload['tariff_id'])->update(['driver_cash_released_percentage' => 0, 'helper_cash_released_percentage' => 0]);
         // A supplied salary does not override the configured rate.
         $payload['personnels'][0]['salary'] = 1;
         $this->putJson(route('trips.update', $trip), $payload)->assertOk();
@@ -426,39 +422,44 @@ class TripsManagementTest extends TestCase
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels');
     }
 
-    public function test_disbursement_preserves_released_money_when_salary_changes(): void
+    public function test_disbursement_calculates_driver_and_helper_releases_and_preserves_saved_funds(): void
     {
         $trip = $this->draft();
         $payload = $this->payload();
-        $employeeId = $payload['personnels'][0]['employee_id'];
-        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
-        $payload['version'] = $trip->fresh()->version;
-        $payload['personnels'][0]['id'] = $trip->personnels()->first()->id;
-        $payload['disbursements'] = [['employee_id' => $employeeId, 'cash_released' => 200]];
+        $driverId = $payload['personnels'][0]['employee_id'];
+        $helper = Personnel::findOrFail($driverId)->replicate();
+        $helper->employee_id = 'HELPER-'.Str::random(8);
+        $helper->position = 'Helper';
+        $helper->personnel_type = 'Helper';
+        $helper->save();
+        $payload['personnels'][] = ['employee_id' => $helper->id, 'designation' => 'Helper'];
+        // Submitted amounts cannot override the backend configuration.
+        $payload['disbursements'] = [['employee_id' => $driverId, 'cash_released' => 1], ['employee_id' => $helper->id, 'cash_released' => 1]];
         $payload['gcash_number'] = '09123456789';
         $this->putJson(route('trips.update', $trip), $payload)->assertOk();
-        $this->assertEquals(200, $trip->personnels()->first()->cash_released);
-        $this->assertEquals(900, $trip->personnels()->first()->non_cash_released);
+        $this->assertEquals(600, $trip->personnels()->where('employee_id', $driverId)->first()->cash_released);
+        $this->assertEquals(250, $trip->personnels()->where('employee_id', $helper->id)->first()->cash_released);
         $this->assertEquals('09123456789', $trip->fresh()->gcash_number);
         $payload['version'] = $trip->fresh()->version;
-        $driver = Personnel::findOrFail($payload['personnels'][0]['employee_id'])->replicate();
-        $driver->employee_id = 'DRIVER-'.Str::random(8);
-        $driver->save();
-        $payload['personnels'][] = ['employee_id' => $driver->id, 'designation' => 'Driver'];
-        $payload['personnels'][0]['designation'] = 'Helper';
-        unset($payload['disbursements']);
+        foreach ($payload['personnels'] as &$person) {
+            $person['id'] = $trip->personnels()->where('employee_id', $person['employee_id'])->first()->id;
+        }
+        unset($person);
+        $rate = TripRate::findOrFail($payload['tariff_id']);
+        $rate->update(['driver_cash_released_percentage' => 80, 'helper_rate' => 700, 'helper_cash_released_percentage' => 60]);
         $this->putJson(route('trips.update', $trip), $payload)->assertOk();
-        $this->assertEquals(200, $trip->personnels()->first()->cash_released);
-        $this->assertEquals(350, $trip->personnels()->first()->non_cash_released);
+        $this->assertEquals(800, $trip->personnels()->where('employee_id', $driverId)->first()->cash_released);
+        $this->assertEquals(420, $trip->personnels()->where('employee_id', $helper->id)->first()->cash_released);
         $payload['version'] = $trip->fresh()->version;
-        $payload['disbursements'] = [['employee_id' => $employeeId, 'cash_released' => 100]];
+        $rate->update(['driver_cash_released_percentage' => 0, 'helper_cash_released_percentage' => 0]);
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(800, $trip->personnels()->where('employee_id', $driverId)->first()->cash_released);
+        $this->assertEquals(420, $trip->personnels()->where('employee_id', $helper->id)->first()->cash_released);
+        $payload['version'] = $trip->fresh()->version;
+        $rate->update(['helper_rate' => 100, 'additional_helper_rate' => 0]);
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('disbursements');
-        unset($payload['disbursements']);
-        TripRate::find($payload['tariff_id'])->update(['helper_rate' => 100, 'additional_helper_rate' => 0]);
-        $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('disbursements');
-        $this->assertEquals(200, $trip->personnels()->first()->cash_released);
-        $this->assertEquals(550, $trip->personnels()->first()->salary);
-        $payload['personnels'] = [];
+        $this->assertEquals(420, $trip->personnels()->where('employee_id', $helper->id)->first()->cash_released);
+        $payload['personnels'] = [$payload['personnels'][0]];
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels');
         $this->assertEquals(2, $trip->personnels()->count());
     }
@@ -477,6 +478,62 @@ class TripsManagementTest extends TestCase
         $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('personnels');
         $this->assertEquals(0, $trip->personnels()->count());
         $this->assertEquals(0, $trip->fresh()->version);
+    }
+
+    public function test_personnel_classification_falls_back_to_type_and_new_rate_values_persist(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $driverId = $payload['personnels'][0]['employee_id'];
+        $helper = Personnel::findOrFail($driverId)->replicate();
+        $helper->employee_id = 'HELPER-'.Str::random(8);
+        $helper->position = '';
+        $helper->personnel_type = 'Helper';
+        $helper->save();
+        $payload['personnels'][] = ['employee_id' => $helper->id, 'designation' => 'Helper'];
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $this->assertEquals(250, $trip->personnels()->where('employee_id', $helper->id)->first()->cash_released);
+        $rate = TripRate::findOrFail($payload['tariff_id'])->replicate();
+        $rate->trip_number = 'UPDATED-'.Str::random(8);
+        $rate->minimum_drop = 3;
+        $rate->driver_rate = 1500;
+        $rate->helper_rate = 900;
+        $rate->save();
+        $payload['version'] = $trip->fresh()->version;
+        $payload['tariff_id'] = $rate->id;
+        $payload['trip_no'] = $rate->trip_number;
+        $payload['drops_number'] = (int) $rate->minimum_drop;
+        $payload['trip_type'] = $rate->trip_type;
+        $payload['payment_type'] = $rate->payment_type;
+        foreach ($payload['personnels'] as &$person) {
+            $person['id'] = $trip->personnels()->where('employee_id', $person['employee_id'])->first()->id;
+        }
+        unset($person);
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $trip->refresh();
+        $this->assertEquals($rate->trip_number, $trip->trip_no);
+        $this->assertEquals(3, $trip->drops_number);
+        $this->assertEquals($rate->trip_type, $trip->trip_type);
+        $this->assertEquals($rate->payment_type, $trip->payment_type);
+        $this->assertEquals(900, $trip->personnels()->where('employee_id', $driverId)->first()->cash_released);
+        $this->assertEquals(450, $trip->personnels()->where('employee_id', $helper->id)->first()->cash_released);
+        $this->get(route('trips.show', $trip))->assertOk()->assertSee($rate->trip_number)->assertSee('data-personnel-classification="Helper"', false);
+    }
+
+    public function test_vehicle_group_type_and_missing_classification_cannot_bypass_rate_validation(): void
+    {
+        $trip = $this->draft();
+        $payload = $this->payload();
+        $vehicle = Vehicle::findOrFail($payload['vehicle_id']);
+        $this->putJson(route('trips.update', $trip), $payload)->assertOk();
+        $payload['version'] = $trip->fresh()->version;
+        $payload['personnels'][0]['id'] = $trip->personnels()->first()->id;
+        foreach ([['vehicle_group' => 'Different group'], ['vehicle_type' => 'Different type'], ['vehicle_group' => ''], ['vehicle_type' => '']] as $change) {
+            $vehicle->update(array_replace(['vehicle_group' => 'Truck', 'vehicle_type' => 'Truck'], $change));
+            $this->putJson(route('trips.update', $trip), $payload)->assertUnprocessable()->assertJsonValidationErrors('tariff_id');
+            $this->assertEquals($payload['version'], $trip->fresh()->version);
+            $this->assertEquals(1, $trip->personnels()->count());
+        }
     }
 
     public function test_route_segments_are_authoritative_for_trip_origin_destination_and_distance(): void
@@ -523,7 +580,7 @@ class TripsManagementTest extends TestCase
         $payload['personnels'][0]['designation'] = 'DRIVER';
         $this->saveAndDispatch($trip, $payload)->assertOk();
         $this->assertEquals(1100, $trip->personnels()->first()->salary);
-        $this->assertEquals(1100, $trip->personnels()->first()->non_cash_released);
+        $this->assertEquals(500, $trip->personnels()->first()->non_cash_released);
         $this->assertDatabaseHas('trip_status', ['trip_id' => $trip->trip_id, 'status' => 'Dispatched', 'reason' => null]);
     }
 
@@ -533,7 +590,7 @@ class TripsManagementTest extends TestCase
         $payload = $this->payload();
         $this->putJson(route('trips.update', $trip), $payload)->assertOk();
         $summary = app(\App\Services\TripService::class)->financialSummary($trip->fresh());
-        $this->assertEquals(['Total personnel salary' => 1100, 'Total fuel cost' => 600, 'Total additional trip costs' => 50, 'Total released amount' => 50, 'Total non-released amount' => 1700, 'Total trip cost' => 1750], $summary);
+        $this->assertEquals(['Total personnel salary' => 1100, 'Total fuel cost' => 600, 'Total additional trip costs' => 50, 'Total released amount' => 650, 'Total non-released amount' => 1100, 'Total trip cost' => 1750], $summary);
         $this->get(route('trips.show', $trip))->assertOk()->assertSee('Trip Financial Summary')->assertSee('PHP 1,750.00');
         $this->postJson(route('trips.dispatch', $trip))->assertOk();
         $this->get(route('trips.print', $trip))->assertOk()->assertSee('Trip Financial Summary')->assertSee('PHP 1,750.00')->assertDontSee('Primary navigation');

@@ -1,4 +1,4 @@
-import { personnelSalaryCents } from './trip-calculations';
+import { personnelSalaryCents, personnelCashReleaseCents, personnelRateForClassification, filterTripRateOptions, populateTripRateFields } from './trip-calculations';
 import { enhanceTripSelects, refreshTripSelects, expandTripSection } from './trip-searchable-select';
 import { notifications } from './notifications';
 import { createTripDialogs, withTripSubmissionLock, readTripResponse } from './trip-dialogs';
@@ -73,14 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const rateSelect = editor.querySelector('[data-trip-rate]');
         const releasesContainer = editor.querySelector('[data-trip-disbursements]');
         const savedReleases = new Map(JSON.parse(releasesContainer.dataset.savedReleases).map((release) => [String(release.employee_id), Number(release.cash_released)]));
-        const pendingReleases = new Map(savedReleases);
-        const captureReleases = () => {
-            releasesContainer.querySelectorAll('[data-disbursement-row]').forEach((row) => {
-                pendingReleases.set(row.querySelector('[name$="[employee_id]"]').value, row.querySelector('[name$="[cash_released]"]').value);
-            });
-        };
         const syncDisbursements = () => {
-            captureReleases();
             releasesContainer.replaceChildren();
             const assigned = new Set();
             editor.querySelectorAll('[data-trip-collection="personnels"] [data-trip-row]').forEach((person) => {
@@ -95,7 +88,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.querySelector('[data-disbursement-employee]').textContent = employee.selectedOptions[0].textContent;
                 const salary = Number(person.querySelector('[data-personnel-salary]').value || 0);
                 const released = row.querySelector('[name$="[cash_released]"]');
-                released.value = pendingReleases.get(employee.value) ?? 0;
+                const rates = JSON.parse(rateSelect.selectedOptions[0]?.dataset.personnelRates || '{}');
+                const classification = employee.selectedOptions[0]?.dataset.personnelClassification;
+                released.value = (personnelCashReleaseCents(personnelRateForClassification(rates, classification), Math.round((savedReleases.get(employee.value) ?? 0) * 100)) / 100).toFixed(2);
                 released.min = savedReleases.get(employee.value) ?? 0;
                 released.max = salary.toFixed(2);
                 row.querySelector('[data-disbursement-balance]').value = Math.max(0, salary - Number(released.value)).toFixed(2);
@@ -107,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const drops = Number(editor.querySelector('[name="drops_number"]').value || 0);
             editor.querySelectorAll('[data-trip-collection="personnels"] [data-trip-row]').forEach((row) => {
                 const designation = row.querySelector('[name$="[designation]"]');
-                const salary = personnelSalaryCents(rates[designation.value], drops);
+                const salary = personnelSalaryCents(personnelRateForClassification(rates, designation.value), drops);
                 row.querySelector('[data-personnel-salary]').value = salary === null ? '' : (salary / 100).toFixed(2);
                 row.querySelector('[data-personnel-rate-error]').hidden = !designation.value || salary !== null;
             });
@@ -148,7 +143,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = field.closest('[data-trip-row]');
             if (row && field.name.endsWith('[fuel_supplier]')) row.querySelector('[name$="[price_per_liter]"]').value = field.selectedOptions[0]?.dataset.price ?? 0;
             if (row?.closest('[data-trip-collection="costs"]')) syncTripCost(row, field.name.match(/\[(\w+)\]$/)?.[1]);
-            if (row?.closest('[data-trip-collection="personnels"]')) syncPersonnelSalaries();
+            if (row?.closest('[data-trip-collection="personnels"]')) {
+                if (field.name.endsWith('[employee_id]')) {
+                    const designation = row.querySelector('[name$="[designation]"]');
+                    const classification = field.selectedOptions[0]?.dataset.personnelClassification ?? '';
+                    designation.value = [...designation.options].find(option => option.value.toLowerCase() === classification.toLowerCase())?.value ?? '';
+                }
+                syncPersonnelSalaries();
+            }
             refreshTripSelects(editor);
             validation.update(field);
         });
@@ -156,38 +158,35 @@ document.addEventListener('DOMContentLoaded', () => {
             if (event.target.name === 'drops_number') syncPersonnelSalaries();
             const costRow = event.target.closest('[data-trip-collection="costs"] [data-trip-row]');
             if (costRow) syncTripCost(costRow);
-            const row = event.target.closest('[data-disbursement-row]');
-            if (row && event.target.name.endsWith('[cash_released]')) {
-                captureReleases();
-                const salary = Number(event.target.max);
-                row.querySelector('[data-disbursement-balance]').value = Math.max(0, salary - Number(event.target.value)).toFixed(2);
-            }
         });
         editor.addEventListener('input', (event) => validation.update(event.target));
         const vehicle = editor.querySelector('[data-trip-vehicle]');
-        const syncVehicle = () => {
+        const syncVehicle = (event) => {
             const data = JSON.parse(vehicle.selectedOptions[0]?.dataset.vehicle || '{}');
             editor.querySelectorAll('[data-vehicle-field]').forEach((field) => { field.value = data[field.dataset.vehicleField] ?? ''; });
+            const previousRate = rateSelect.value;
+            filterTripRateOptions(rateSelect, data);
+            if (event && !previousRate && !rateSelect.value) rateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            refreshTripSelects(editor);
         };
-        vehicle.addEventListener('change', syncVehicle); syncVehicle();
+        vehicle.addEventListener('change', syncVehicle);
         rateSelect.addEventListener('change', (event) => {
             const rate = JSON.parse(event.target.selectedOptions[0]?.dataset.rate || '{}');
-            for (const [field, source] of Object.entries({ trip_no: 'trip_number', trip_type: 'trip_type', payment_type: 'payment_type' })) {
-                const input = editor.querySelector(`[name="${field}"]`);
-                if (!input.value && rate[source]) input.value = rate[source];
-            }
+            populateTripRateFields(editor, rate);
             syncPersonnelSalaries();
             refreshTripSelects(editor);
         });
-        syncPersonnelSalaries();
         editor.querySelectorAll('[data-trip-collection="costs"] [data-trip-row]').forEach((row) => syncTripCost(row));
+        // Compare dispatch against saved releases, before automatic recalculation changes the editor.
+        savedEditorPayload = tripFormPayload(editor);
+        syncVehicle();
+        syncPersonnelSalaries();
         editor.querySelectorAll('[data-trip-section] .card-header').forEach((header) => {
             header.addEventListener('click', (event) => {
                 if (!event.target.closest('button, a, input')) header.querySelector('[data-card-toggle]')?.click();
             });
         });
         editor.addEventListener('invalid', (event) => expandTripSection(event.target), true);
-        savedEditorPayload = tripFormPayload(editor);
         initializeTripWaybills(editor, field => validation.update(field));
         editor.addEventListener('submit', async (event) => {
             event.preventDefault();

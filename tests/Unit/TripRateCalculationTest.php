@@ -7,6 +7,20 @@ use PHPUnit\Framework\TestCase;
 
 class TripRateCalculationTest extends TestCase
 {
+    public function test_cash_release_uses_the_classification_base_rate_and_whole_percentage(): void
+    {
+        $rate = new TripRate(['driver_rate' => 1234.56, 'helper_rate' => 500, 'driver_cash_released_percentage' => 20, 'helper_cash_released_percentage' => 50]);
+        $this->assertEquals(24691, $rate->personnelCashReleaseCents('DRIVER'));
+        $this->assertEquals(25000, $rate->personnelCashReleaseCents('Helper'));
+        $rate->driver_cash_released_percentage = 0.20;
+        $this->assertEquals(247, $rate->personnelCashReleaseCents('Driver'));
+        $rate->driver_cash_released_percentage = null;
+        $this->assertEquals(0, $rate->personnelCashReleaseCents('Driver'));
+        $rate->helper_rate = 0;
+        $this->assertEquals(0, $rate->personnelCashReleaseCents('Helper'));
+        $this->assertEquals(0, $rate->personnelCashReleaseCents('Missing'));
+    }
+
     public function test_rate_definitions_support_roles_present_in_configuration(): void
     {
         $rate = new TripRate;
